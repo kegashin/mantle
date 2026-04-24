@@ -1,0 +1,14 @@
+{
+  "name": "@glyphrame/engine",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json --noEmit"
+  },
+  "dependencies": {
+    "@glyphrame/schemas": "workspace:*"
+  }
+}

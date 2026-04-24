@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.tooling.json"
+    },
+    {
+      "path": "./packages/schemas"
+    },
+    {
+      "path": "./packages/engine"
+    },
+    {
+      "path": "./apps/web"
+    }
+  ]
+}

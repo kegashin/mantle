@@ -1,0 +1,26 @@
+{
+  "name": "@glyphrame/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bunx --bun vite",
+    "dev:e2e": "bunx --bun vite --host 127.0.0.1 --port 4173",
+    "build": "bunx --bun vite build",
+    "preview": "bunx --bun vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@glyphrame/engine": "workspace:*",
+    "@glyphrame/schemas": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "babel-plugin-react-compiler": "latest",
+    "vite": "^7.0.0"
+  }
+}

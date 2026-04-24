@@ -1,0 +1,426 @@
+.page {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 52px minmax(0, 1fr);
+  overflow: hidden;
+  background:
+    radial-gradient(60vmax 60vmax at 20% 10%, rgba(255, 255, 255, 0.04), transparent 60%),
+    radial-gradient(50vmax 50vmax at 85% 90%, rgba(255, 255, 255, 0.025), transparent 60%),
+    var(--color-bg);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(7, 7, 8, 0.78);
+  backdrop-filter: blur(var(--blur-soft));
+  -webkit-backdrop-filter: blur(var(--blur-soft));
+  z-index: 20;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding-right: 6px;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  letter-spacing: 0.16em;
+}
+
+.brandMark {
+  color: var(--color-text-muted);
+  transform: translateY(-1px);
+}
+
+.brandName {
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.brandMeta {
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  color: var(--color-text-dim);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+}
+
+.topSpacer {
+  flex: 1;
+}
+
+.topActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.topGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.topGroup + .topGroup {
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border);
+}
+
+.topGroupLabel {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.topGroupButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topButton,
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-soft);
+  font-size: 0.78rem;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.topButton:hover,
+.primaryButton:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.topButton:disabled,
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.primaryButton {
+  color: #050606;
+  border-color: rgba(255, 255, 255, 0.78);
+  background: rgba(244, 244, 239, 0.92);
+}
+
+.primaryButton:hover {
+  color: #050505;
+  background: #ffffff;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr) 340px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.leftRail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.018);
+  padding: 16px 14px;
+  gap: 14px;
+}
+
+.railHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--color-text-soft);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.railMeta {
+  color: var(--color-text-dim);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+}
+
+.presetList {
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.presetCard {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.022);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.presetCard:hover {
+  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.presetCardActive {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.presetSwatch {
+  width: 44px;
+  height: 32px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.presetLabel {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.presetLabel strong {
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 620;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presetLabel small {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.railFooter {
+  margin-top: auto;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.footerTitle {
+  color: var(--color-text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footerMeta {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+
+.stageWrap {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.stageToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 60px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.stageKicker {
+  margin-bottom: 3px;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.stageTitle {
+  max-width: min(60vw, 720px);
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 320px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+}
+
+.statusPill span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9ee6c6;
+  box-shadow: 0 0 14px rgba(158, 230, 198, 0.5);
+}
+
+.dropOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.dropTarget {
+  display: grid;
+  gap: 10px;
+  min-width: 260px;
+  place-items: center;
+  padding: 38px;
+  border: 1px dashed rgba(255, 255, 255, 0.42);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.fatal {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  color: var(--color-danger);
+}
+
+@media (max-width: 1180px) {
+  .page {
+    position: relative;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .workspace {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+  .workspace > * {
+    /* Force full-width stacking: without this, flex items size to content
+       and the canvas pushes the stage column past the viewport. */
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 0 auto;
+  }
+  .stageWrap {
+    order: 1;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    min-height: 480px;
+  }
+  .leftRail {
+    order: 2;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .presetList {
+    grid-auto-flow: column;
+    grid-auto-columns: 220px;
+    grid-template-columns: none;
+    overflow-x: auto;
+  }
+  .railHeader,
+  .railFooter {
+    display: none;
+  }
+}
+
+
+@media (max-width: 680px) {
+  .topBar {
+    gap: 4px;
+  }
+  .topActions {
+    gap: 6px;
+  }
+  .topGroup {
+    gap: 4px;
+  }
+  .topGroup + .topGroup {
+    padding-left: 6px;
+  }
+  .brandMeta,
+  .topGroupLabel,
+  .topButton span,
+  .primaryButton span {
+    display: none;
+  }
+}

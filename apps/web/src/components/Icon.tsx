@@ -1,0 +1,200 @@
+import type { ReactElement, SVGProps } from 'react';
+
+export type IconName =
+  | 'upload'
+  | 'image'
+  | 'sparkle'
+  | 'sliders'
+  | 'wand'
+  | 'film'
+  | 'download'
+  | 'copy'
+  | 'reset'
+  | 'play'
+  | 'pause'
+  | 'split'
+  | 'eye'
+  | 'zoom-fit'
+  | 'zoom-100'
+  | 'chevron'
+  | 'close'
+  | 'info'
+  | 'alert'
+  | 'check'
+  | 'dot'
+  | 'grain';
+
+type IconProps = SVGProps<SVGSVGElement> & {
+  name: IconName;
+  size?: number;
+};
+
+const paths: Record<IconName, ReactElement> = {
+  upload: (
+    <>
+      <path d="M12 4v12" />
+      <path d="m7 9 5-5 5 5" />
+      <path d="M4 17v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.5" />
+      <path d="m21 16-5-5-9 9" />
+    </>
+  ),
+  sparkle: (
+    <>
+      <path d="M12 3v4" />
+      <path d="M12 17v4" />
+      <path d="M3 12h4" />
+      <path d="M17 12h4" />
+      <path d="m5.6 5.6 2.8 2.8" />
+      <path d="m15.6 15.6 2.8 2.8" />
+      <path d="m18.4 5.6-2.8 2.8" />
+      <path d="m8.4 15.6-2.8 2.8" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 6h10" />
+      <path d="M18 6h2" />
+      <circle cx="16" cy="6" r="2" />
+      <path d="M4 12h4" />
+      <path d="M12 12h8" />
+      <circle cx="10" cy="12" r="2" />
+      <path d="M4 18h12" />
+      <path d="M20 18h0" />
+      <circle cx="18" cy="18" r="2" />
+    </>
+  ),
+  wand: (
+    <>
+      <path d="m4 20 12-12" />
+      <path d="M14 6h4v4" />
+      <path d="M9 4v2" />
+      <path d="M5 8h2" />
+      <path d="M19 13v2" />
+      <path d="M20 19h-2" />
+    </>
+  ),
+  film: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M7 4v16" />
+      <path d="M17 4v16" />
+      <path d="M3 10h4" />
+      <path d="M3 14h4" />
+      <path d="M17 10h4" />
+      <path d="M17 14h4" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 4v12" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M4 20h16" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </>
+  ),
+  reset: (
+    <>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+    </>
+  ),
+  play: <path d="M6 4v16l14-8Z" />,
+  pause: (
+    <>
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </>
+  ),
+  split: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M12 4v16" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  'zoom-fit': (
+    <>
+      <path d="M4 9V5h4" />
+      <path d="M20 9V5h-4" />
+      <path d="M4 15v4h4" />
+      <path d="M20 15v4h-4" />
+    </>
+  ),
+  'zoom-100': (
+    <>
+      <path d="M5 9h2v6" />
+      <rect x="10" y="9" width="4" height="6" rx="2" />
+      <rect x="16" y="9" width="4" height="6" rx="2" />
+    </>
+  ),
+  chevron: <path d="m6 9 6 6 6-6" />,
+  close: (
+    <>
+      <path d="m6 6 12 12" />
+      <path d="m18 6-12 12" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8h0" />
+      <path d="M12 12v4" />
+    </>
+  ),
+  alert: (
+    <>
+      <path d="M12 3 2 20h20Z" />
+      <path d="M12 10v4" />
+      <path d="M12 17h0" />
+    </>
+  ),
+  check: <path d="m5 12 5 5 9-11" />,
+  dot: <circle cx="12" cy="12" r="3" fill="currentColor" />,
+  grain: (
+    <>
+      <circle cx="6" cy="6" r="1" fill="currentColor" />
+      <circle cx="12" cy="10" r="1" fill="currentColor" />
+      <circle cx="18" cy="6" r="1" fill="currentColor" />
+      <circle cx="8" cy="14" r="1" fill="currentColor" />
+      <circle cx="16" cy="16" r="1" fill="currentColor" />
+      <circle cx="12" cy="18" r="1" fill="currentColor" />
+    </>
+  )
+};
+
+export function Icon({ name, size = 16, ...rest }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      focusable="false"
+      height={size}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.6}
+      viewBox="0 0 24 24"
+      width={size}
+      xmlns="http://www.w3.org/2000/svg"
+      {...rest}
+    >
+      {paths[name]}
+    </svg>
+  );
+}
