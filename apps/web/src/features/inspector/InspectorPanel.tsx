@@ -16,6 +16,7 @@ import type {
   MantlePalette,
   MantleTextFont,
   MantleTextPlacement,
+  MantleTextShadow,
   MantleSurfaceAspectRatioPreset,
   MantleSurfaceTarget
 } from '@mantle/schemas/model';
@@ -123,6 +124,12 @@ const TEXT_PLACEMENT_OPTIONS: Array<{ value: MantleTextPlacement; label: string 
   { value: 'bottom', label: 'Bottom' },
   { value: 'left', label: 'Left' },
   { value: 'right', label: 'Right' }
+];
+
+const TEXT_SHADOW_OPTIONS: Array<{ value: MantleTextShadow; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' }
 ];
 
 const TEXT_FONT_OPTIONS: Array<{ value: MantleTextFont; label: string }> = [
@@ -1080,6 +1087,12 @@ export function InspectorPanel({
               value={card.text.gap}
               format={formatPx}
               onChange={(gap) => onTextChange({ gap })}
+            />
+            <div className={styles.frameGroupLabel}>Shadow</div>
+            <Segmented
+              value={card.text.shadow}
+              options={TEXT_SHADOW_OPTIONS}
+              onChange={(shadow) => onTextChange({ shadow })}
             />
           </>
         ) : null}

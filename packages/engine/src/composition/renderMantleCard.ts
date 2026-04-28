@@ -239,6 +239,10 @@ export async function renderMantleCardToCanvas(
     };
     const textReference = Math.min(width, height * 1.45);
     const textGap = showText ? text.gap * scale : 0;
+    // Pull the title/subtitle a small distance from the canvas edge so it
+    // doesn't sit flush with the rounded outer frame. ~3% of the shorter
+    // canvas dimension matches editorial margins on social cards.
+    const edgeInset = showText ? Math.min(width, height) * 0.03 : 0;
     let imageBounds: Rect = { ...availableRect };
     let textDraw:
       | {
@@ -259,7 +263,8 @@ export async function renderMantleCardToCanvas(
           text,
           palette,
           maxWidth: textWidth,
-          reference: textReference
+          reference: textReference,
+          backgroundPresetId: card.background.presetId
         });
         const textX =
           text.align === 'center'
@@ -269,8 +274,8 @@ export async function renderMantleCardToCanvas(
               : availableRect.x;
         const textY =
           text.placement === 'top'
-            ? availableRect.y
-            : availableRect.y + availableRect.height - layout.height;
+            ? availableRect.y + edgeInset
+            : availableRect.y + availableRect.height - layout.height - edgeInset;
 
         textDraw = { layout, x: textX, y: textY };
         imageBounds =
@@ -300,12 +305,13 @@ export async function renderMantleCardToCanvas(
           text,
           palette,
           maxWidth: textWidth,
-          reference: textReference
+          reference: textReference,
+          backgroundPresetId: card.background.presetId
         });
         const textX =
           text.placement === 'left'
-            ? availableRect.x
-            : availableRect.x + availableRect.width - layout.width;
+            ? availableRect.x + edgeInset
+            : availableRect.x + availableRect.width - layout.width - edgeInset;
         const textY = availableRect.y + (availableRect.height - layout.height) / 2;
 
         textDraw = { layout, x: textX, y: textY };

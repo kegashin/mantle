@@ -43,7 +43,8 @@ export const DEFAULT_MANTLE_TEXT: MantleText = deepFreeze({
   subtitleFont: 'sans',
   scale: 1,
   width: 0.68,
-  gap: 64
+  gap: 64,
+  shadow: 'auto'
 });
 
 export const DEFAULT_MANTLE_BACKGROUND: MantleBackground = deepFreeze({
@@ -76,7 +77,7 @@ export const DEFAULT_MANTLE_FRAME: MantleFrame = deepFreeze({
 
 export const DEFAULT_MANTLE_EXPORT: MantleExportSettings = deepFreeze({
   format: 'png',
-  scale: 2
+  scale: 1
 });
 
 export const DEFAULT_MANTLE_TARGETS: MantleSurfaceTarget[] = deepFreeze([

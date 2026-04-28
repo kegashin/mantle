@@ -1,18 +1,32 @@
 import type {
+  MantleBackgroundPresetId,
   MantleCard,
   MantlePalette,
-  MantleText
+  MantleText,
+  MantleTextFont
 } from '@mantle/schemas/model';
 
 import type { MantleCanvasRenderingContext2D } from '../canvas';
-import { mixHex } from '../palette';
+import { mixHex, parseHexToRgb, rgbToCss } from '../palette';
+
+type TextLineStyle = {
+  font: string;
+  color: string;
+  fontSize: number;
+  letterSpacing: number;
+  shadow?: TextShadow | undefined;
+};
+
+type TextShadow = {
+  color: string;
+  blurPx: number;
+};
 
 type TextBlockItem =
   | {
       type: 'line';
       text: string;
-      font: string;
-      color: string;
+      style: TextLineStyle;
       lineHeight: number;
     }
   | {
@@ -26,8 +40,51 @@ export type TextBlockLayout = {
   height: number;
 };
 
+const FONT_WEIGHT_TITLE = 600;
+const FONT_WEIGHT_SUBTITLE = 500;
+
+// Background presets where the title visibly competes with high-frequency or
+// strongly coloured texture. On these we apply a subtle shadow even with the
+// `auto` setting so headlines lift off the surface cleanly.
+const SHADOW_RECOMMENDED_BACKGROUNDS = new Set<MantleBackgroundPresetId>([
+  'aurora-gradient',
+  'marbling',
+  'smoke-veil',
+  'symbol-wave',
+  'signal-field',
+  'falling-pattern',
+  'terminal-scanline',
+  'image-fill'
+]);
+
+function setCanvasFontStyle(
+  ctx: MantleCanvasRenderingContext2D,
+  style: TextLineStyle
+): void {
+  ctx.font = style.font;
+  // letterSpacing / fontKerning are widely available in Chrome 99+, Safari 16+,
+  // Firefox 138+; falling back silently is fine since the property assignment
+  // is a no-op when unsupported.
+  const ctxAny = ctx as unknown as {
+    letterSpacing?: string;
+    fontKerning?: 'auto' | 'normal' | 'none';
+  };
+  ctxAny.letterSpacing = `${style.letterSpacing}px`;
+  ctxAny.fontKerning = 'normal';
+}
+
+function measureLineWidth(
+  ctx: MantleCanvasRenderingContext2D,
+  style: TextLineStyle,
+  text: string
+): number {
+  setCanvasFontStyle(ctx, style);
+  return ctx.measureText(text).width;
+}
+
 function wrapTextLines(
   ctx: MantleCanvasRenderingContext2D,
+  style: TextLineStyle,
   text: string,
   maxWidth: number
 ): string[] {
@@ -39,7 +96,7 @@ function wrapTextLines(
     let chunk = '';
     for (const char of word) {
       const next = `${chunk}${char}`;
-      if (chunk && ctx.measureText(next).width > maxWidth) {
+      if (chunk && measureLineWidth(ctx, style, next) > maxWidth) {
         lines.push(chunk);
         chunk = char;
       } else {
@@ -51,13 +108,13 @@ function wrapTextLines(
 
   for (const word of words) {
     const next = line ? `${line} ${word}` : word;
-    if (ctx.measureText(next).width > maxWidth && line) {
+    if (measureLineWidth(ctx, style, next) > maxWidth && line) {
       lines.push(line);
       line = word;
-      if (ctx.measureText(line).width > maxWidth) {
+      if (measureLineWidth(ctx, style, line) > maxWidth) {
         pushLongWord(line);
       }
-    } else if (!line && ctx.measureText(word).width > maxWidth) {
+    } else if (!line && measureLineWidth(ctx, style, word) > maxWidth) {
       pushLongWord(word);
     } else {
       line = next;
@@ -65,6 +122,29 @@ function wrapTextLines(
   }
 
   if (line) lines.push(line);
+
+  // Anti-orphan pass: if the last line is a single short word and the line
+  // before it has at least three words, demote the trailing word so the last
+  // line doesn't sit alone like a typo.
+  if (lines.length >= 2) {
+    const last = lines[lines.length - 1]!;
+    const beforeLast = lines[lines.length - 2]!;
+    const beforeWords = beforeLast.split(' ');
+    const isOrphan =
+      !last.includes(' ') &&
+      last.length <= 6 &&
+      beforeWords.length >= 3;
+    if (isOrphan) {
+      const moveWord = beforeWords.pop()!;
+      const candidateBefore = beforeWords.join(' ');
+      const candidateLast = `${moveWord} ${last}`;
+      if (measureLineWidth(ctx, style, candidateLast) <= maxWidth) {
+        lines[lines.length - 2] = candidateBefore;
+        lines[lines.length - 1] = candidateLast;
+      }
+    }
+  }
+
   return lines;
 }
 
@@ -76,22 +156,22 @@ export function hasVisibleText(text: MantleText): boolean {
   return text.placement !== 'none' && Boolean(text.title?.trim() || text.subtitle?.trim());
 }
 
-function resolveTextFontStack(font: MantleText['titleFont']): string {
+function resolveTextFontStack(font: MantleTextFont): string {
   switch (font) {
     case 'system':
       return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
     case 'display':
-      return '"Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif';
+      return '"Inter", "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif';
     case 'rounded':
       return 'ui-rounded, "SF Pro Rounded", "Avenir Next Rounded Std", "Nunito", system-ui, sans-serif';
     case 'serif':
       return 'ui-serif, Georgia, "Times New Roman", serif';
     case 'editorial':
-      return '"New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
+      return '"Instrument Serif", "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
     case 'slab':
       return 'Rockwell, "Roboto Slab", "Courier New", ui-serif, serif';
     case 'mono':
-      return 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+      return '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
     case 'code':
       return '"JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace';
     case 'condensed':
@@ -102,64 +182,133 @@ function resolveTextFontStack(font: MantleText['titleFont']): string {
   }
 }
 
+/**
+ * Optical letter-spacing for Canvas text. Matches the `letter-spacing` rules
+ * editorial typography uses: tighter as size grows for sans/serif headlines,
+ * slightly looser for monospace and condensed where uniform spacing reads
+ * better.
+ */
+function resolveLetterSpacingPx(font: MantleTextFont, fontSize: number, role: 'title' | 'subtitle'): number {
+  if (font === 'mono' || font === 'code') {
+    return fontSize * (role === 'title' ? 0.005 : 0.01);
+  }
+  if (font === 'condensed') {
+    return fontSize * 0.012;
+  }
+  if (role === 'subtitle') {
+    return fontSize * -0.006;
+  }
+  // Title: tighter as size grows. At 32px → -0.012em, at 80px → -0.022em.
+  const norm = Math.min(1, Math.max(0, (fontSize - 24) / 80));
+  const ems = -0.012 - norm * 0.012;
+  return fontSize * ems;
+}
+
+function shouldRenderShadow(
+  shadowSetting: MantleText['shadow'],
+  backgroundPresetId: MantleBackgroundPresetId
+): boolean {
+  if (shadowSetting === 'on') return true;
+  if (shadowSetting === 'off') return false;
+  return SHADOW_RECOMMENDED_BACKGROUNDS.has(backgroundPresetId);
+}
+
+function resolveTitleShadow(
+  enabled: boolean,
+  palette: MantlePalette,
+  fontSize: number
+): TextShadow | undefined {
+  if (!enabled) return undefined;
+  const rgb = parseHexToRgb(mixHex(palette.background, '#000000', 0.4));
+  return {
+    color: rgbToCss(rgb, 0.42),
+    blurPx: Math.max(6, fontSize * 0.18)
+  };
+}
+
+function resolveSubtitleShadow(
+  enabled: boolean,
+  palette: MantlePalette,
+  fontSize: number
+): TextShadow | undefined {
+  if (!enabled) return undefined;
+  const rgb = parseHexToRgb(mixHex(palette.background, '#000000', 0.32));
+  return {
+    color: rgbToCss(rgb, 0.34),
+    blurPx: Math.max(4, fontSize * 0.14)
+  };
+}
+
 export function createTextBlockLayout({
   ctx,
   text,
   palette,
   maxWidth,
-  reference
+  reference,
+  backgroundPresetId
 }: {
   ctx: MantleCanvasRenderingContext2D;
   text: MantleText;
   palette: MantlePalette;
   maxWidth: number;
   reference: number;
+  backgroundPresetId: MantleBackgroundPresetId;
 }): TextBlockLayout {
   const items: TextBlockItem[] = [];
   const title = text.title?.trim();
   const subtitle = text.subtitle?.trim();
-  const titleSize = Math.max(24, Math.round(reference * 0.038 * text.scale));
-  const subtitleSize = Math.max(15, Math.round(reference * 0.018 * text.scale));
+  const titleSize = Math.max(32, Math.round(reference * 0.04 * text.scale));
+  const subtitleSize = Math.max(17, Math.round(reference * 0.02 * text.scale));
   const titleFontStack = resolveTextFontStack(text.titleFont);
   const subtitleFontStack = resolveTextFontStack(text.subtitleFont);
-  const titleFont = `700 ${titleSize}px ${titleFontStack}`;
-  const subtitleFont = `500 ${subtitleSize}px ${subtitleFontStack}`;
   const titleColor = text.titleColor ?? palette.foreground;
   const mutedColor = palette.muted ?? mixHex(palette.foreground, palette.background, 0.4);
   const subtitleColor = text.subtitleColor ?? mutedColor;
+  const shadowEnabled = shouldRenderShadow(text.shadow, backgroundPresetId);
+
+  const titleStyle: TextLineStyle = {
+    font: `${FONT_WEIGHT_TITLE} ${titleSize}px ${titleFontStack}`,
+    color: titleColor,
+    fontSize: titleSize,
+    letterSpacing: resolveLetterSpacingPx(text.titleFont, titleSize, 'title'),
+    shadow: resolveTitleShadow(shadowEnabled, palette, titleSize)
+  };
+  const subtitleStyle: TextLineStyle = {
+    font: `${FONT_WEIGHT_SUBTITLE} ${subtitleSize}px ${subtitleFontStack}`,
+    color: subtitleColor,
+    fontSize: subtitleSize,
+    letterSpacing: resolveLetterSpacingPx(text.subtitleFont, subtitleSize, 'subtitle'),
+    shadow: resolveSubtitleShadow(shadowEnabled, palette, subtitleSize)
+  };
 
   if (title) {
-    ctx.save();
-    ctx.font = titleFont;
-    wrapTextLines(ctx, title, maxWidth).forEach((line) => {
+    const wrappedTitle = wrapTextLines(ctx, titleStyle, title, maxWidth);
+    // Tighter line-height for single-line, more breathing room when the title
+    // wraps to multiple lines so it doesn't read as a wall of letters.
+    const titleLineHeight = wrappedTitle.length <= 1 ? titleSize * 1.06 : titleSize * 1.16;
+    wrappedTitle.forEach((line) => {
       items.push({
         type: 'line',
         text: line,
-        font: titleFont,
-        color: titleColor,
-        lineHeight: titleSize * 1.08
+        style: titleStyle,
+        lineHeight: titleLineHeight
       });
     });
-    ctx.restore();
   }
 
   if (title && subtitle) {
-    items.push({ type: 'spacer', height: Math.max(8, subtitleSize * 0.72) });
+    items.push({ type: 'spacer', height: Math.max(10, subtitleSize * 0.78) });
   }
 
   if (subtitle) {
-    ctx.save();
-    ctx.font = subtitleFont;
-    wrapTextLines(ctx, subtitle, maxWidth).forEach((line) => {
+    wrapTextLines(ctx, subtitleStyle, subtitle, maxWidth).forEach((line) => {
       items.push({
         type: 'line',
         text: line,
-        font: subtitleFont,
-        color: subtitleColor,
-        lineHeight: subtitleSize * 1.32
+        style: subtitleStyle,
+        lineHeight: subtitleSize * 1.42
       });
     });
-    ctx.restore();
   }
 
   return {
@@ -199,8 +348,19 @@ export function drawTextBlock({
       return;
     }
 
-    ctx.fillStyle = item.color;
-    ctx.font = item.font;
+    setCanvasFontStyle(ctx, item.style);
+    if (item.style.shadow) {
+      ctx.shadowColor = item.style.shadow.color;
+      ctx.shadowBlur = item.style.shadow.blurPx;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = Math.max(1, item.style.fontSize * 0.04);
+    } else {
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    }
+    ctx.fillStyle = item.style.color;
     ctx.fillText(item.text, anchorX, cursorY);
     cursorY += item.lineHeight;
   });

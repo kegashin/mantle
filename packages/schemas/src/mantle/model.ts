@@ -271,6 +271,9 @@ export type MantleTextFont = (typeof MANTLE_TEXT_FONTS)[number];
 export const MANTLE_TEXT_ALIGNMENTS = ['left', 'center', 'right'] as const;
 export type MantleTextAlignment = (typeof MANTLE_TEXT_ALIGNMENTS)[number];
 
+export const MANTLE_TEXT_SHADOWS = ['auto', 'on', 'off'] as const;
+export type MantleTextShadow = (typeof MANTLE_TEXT_SHADOWS)[number];
+
 export type MantleText = {
   placement: MantleTextPlacement;
   align: MantleTextAlignment;
@@ -283,6 +286,7 @@ export type MantleText = {
   scale: number;
   width: number;
   gap: number;
+  shadow: MantleTextShadow;
 };
 
 export type MantleTheme = {
