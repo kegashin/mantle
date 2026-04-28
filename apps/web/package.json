@@ -1,6 +1,7 @@
 {
-  "name": "@glyphrame/web",
+  "name": "@mantle/web",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "bunx --bun vite",
@@ -10,11 +11,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@glyphrame/engine": "workspace:*",
-    "@glyphrame/schemas": "workspace:*",
+    "@mantle/engine": "workspace:*",
+    "@mantle/schemas": "workspace:*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zustand": "^5.0.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

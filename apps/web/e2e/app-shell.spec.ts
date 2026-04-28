@@ -1,9 +1,16 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-test('renders the Glyphrame editor shell', async ({ page }) => {
+async function openSection(page: Page, name: string): Promise<void> {
+  const section = page.getByRole('button', { name, exact: true });
+  if ((await section.getAttribute('aria-expanded')) !== 'true') {
+    await section.click();
+  }
+}
+
+test('renders the Mantle editor shell', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByText('GLYPHRAME', { exact: true })).toBeVisible();
+  await expect(page.getByText('MANTLE', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Image', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Choose image' })).toBeVisible();
   await expect(page.getByText(/drop a screenshot/i)).toBeVisible();
@@ -32,6 +39,7 @@ test('desktop app shell stays pinned to the viewport bottom edge', async ({ page
 
 test('surface and style controls are available without social size presets', async ({ page }) => {
   await page.goto('/');
+  await openSection(page, 'Canvas size');
 
   await expect(page.getByRole('button', { name: 'Free' })).toBeVisible();
   await expect(page.getByRole('button', { name: '16:9' })).toBeVisible();
@@ -51,16 +59,26 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByRole('button', { name: /Clear glass/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Soft panel/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Glass panel/i })).toHaveCount(0);
+  await expect(page.getByText('Panel edge', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Glass', exact: true }).click();
-  await expect(page.getByText('Glass tint', { exact: true })).toBeVisible();
-  await expect(page.getByText('Glass edge', { exact: true })).toBeVisible();
-  await expect(page.getByText('Glass opacity', { exact: true })).toBeVisible();
-  await page.getByRole('slider', { name: 'Glass opacity' }).fill('0.46');
-  await expect(page.getByRole('slider', { name: 'Glass opacity' })).toHaveValue('0.46');
+  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Tinted', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Color', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Glass edge', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Transparency', { exact: true })).toBeVisible();
+  await expect(page.getByText('Blur', { exact: true })).toBeVisible();
+  await expect(page.getByText('Outline', { exact: true })).toBeVisible();
+  await expect(page.getByText('Grain', { exact: true })).toHaveCount(0);
+  await page.getByRole('slider', { name: 'Transparency' }).fill('0.46');
+  await expect(page.getByRole('slider', { name: 'Transparency' })).toHaveValue('0.46');
+  await page.getByRole('slider', { name: 'Blur' }).fill('5');
+  await expect(page.getByRole('slider', { name: 'Blur' })).toHaveValue('5');
+  await page.getByRole('slider', { name: 'Outline' }).fill('0.47');
+  await expect(page.getByRole('slider', { name: 'Outline' })).toHaveValue('0.47');
   await page.getByRole('button', { name: 'macOS window', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Bar text' })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Bar text' }).fill('glyphrame.local');
-  await expect(page.getByRole('textbox', { name: 'Bar text' })).toHaveValue('glyphrame.local');
+  await page.getByRole('textbox', { name: 'Bar text' }).fill('mantle.local');
+  await expect(page.getByRole('textbox', { name: 'Bar text' })).toHaveValue('mantle.local');
   await expect(page.getByRole('slider', { name: 'Chrome gap' })).toHaveValue('32');
   await expect(page.getByText('Render failed.', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'None', exact: true }).first().click();
@@ -68,11 +86,19 @@ test('surface and style controls are available without social size presets', asy
   await page.getByRole('slider', { name: 'Glyph amount' }).fill('0');
   await expect(page.getByRole('slider', { name: 'Glyph amount' })).toHaveValue('0');
   await page.getByRole('button', { name: /Randomize/i }).click();
-  await expect(page.getByText('Background randomized')).toBeVisible();
+  await expect(page.getByText('Background randomized')).toHaveCount(0);
+
+  await page.getByRole('button', { name: /Aurora Gradient/i }).first().click();
+  await expect(page.getByText('Gradient colors', { exact: true })).toBeVisible();
+  await expect(page.getByText('Glow', { exact: true })).toBeVisible();
+  await expect(page.getByText('Spread', { exact: true })).toBeVisible();
+  await expect(page.getByText('Grain', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Randomize/i })).toBeVisible();
 
   await page.getByRole('button', { name: /Contour Lines/i }).first().click();
 
   await expect(page.getByRole('button', { name: /Terminal Scanline/i }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Aurora Gradient/i }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Contour Lines/i }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Dot Grid/i }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Default/i }).first()).toBeVisible();
@@ -90,10 +116,6 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByText('Accent', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Randomize/i })).toHaveCount(0);
   await expect(page.getByText('Relief', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Mono Poster/i })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Launch Ink/i })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Poster Mosaic/i })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Halftone/i })).toHaveCount(0);
 
   await page.getByRole('button', { name: /Default/i }).first().click();
 
@@ -105,6 +127,7 @@ test('surface and style controls are available without social size presets', asy
 
 test('custom canvas dimensions and aspect ratio update the active surface', async ({ page }) => {
   await page.goto('/');
+  await openSection(page, 'Canvas size');
 
   await page.getByRole('spinbutton', { name: 'Width' }).fill('1920');
   await page.getByRole('spinbutton', { name: 'Width' }).press('Enter');

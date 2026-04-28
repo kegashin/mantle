@@ -1,15 +1,131 @@
 import { createRng, isLightPalette, mixHex, parseHexToRgb, rgbToCss } from '../palette';
+import type { MantleCanvasRenderingContext2D } from '../canvas';
+import type { Point } from '../types';
 import type { BackgroundGenerator } from './types';
+import { readBackgroundParam } from './utils';
 
-type Point = {
-  x: number;
-  y: number;
+type Segment = {
+  start: Point;
+  end: Point;
 };
 
-/**
- * Contour lines — topographic iso-lines over a soft gradient.
- * Editorial family. Reads quiet, field-journal-like.
- */
+type EndpointRef = {
+  index: number;
+  end: 'start' | 'end';
+};
+
+function pointKey(point: Point): string {
+  return `${Math.round(point.x * 100)},${Math.round(point.y * 100)}`;
+}
+
+function distance(left: Point, right: Point): number {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function midpoint(left: Point, right: Point): Point {
+  return {
+    x: (left.x + right.x) / 2,
+    y: (left.y + right.y) / 2
+  };
+}
+
+function stitchSegments(segments: Segment[]): Point[][] {
+  const endpoints = new Map<string, EndpointRef[]>();
+  const used = new Uint8Array(segments.length);
+
+  segments.forEach((segment, index) => {
+    const startKey = pointKey(segment.start);
+    const endKey = pointKey(segment.end);
+    endpoints.set(startKey, [...(endpoints.get(startKey) ?? []), { index, end: 'start' }]);
+    endpoints.set(endKey, [...(endpoints.get(endKey) ?? []), { index, end: 'end' }]);
+  });
+
+  const paths: Point[][] = [];
+
+  const extend = (path: Point[], direction: 'head' | 'tail') => {
+    let guard = 0;
+    while (guard < segments.length) {
+      guard += 1;
+      const point = direction === 'tail' ? path[path.length - 1] : path[0];
+      if (!point) return;
+
+      const nextRef = (endpoints.get(pointKey(point)) ?? []).find(
+        (ref) => used[ref.index] === 0
+      );
+      if (!nextRef) return;
+
+      const segment = segments[nextRef.index];
+      if (!segment) return;
+      used[nextRef.index] = 1;
+
+      const nextPoint = nextRef.end === 'start' ? segment.end : segment.start;
+      if (direction === 'tail') {
+        path.push(nextPoint);
+      } else {
+        path.unshift(nextPoint);
+      }
+    }
+  };
+
+  segments.forEach((segment, index) => {
+    if (used[index]) return;
+
+    used[index] = 1;
+    const path = [segment.start, segment.end];
+    extend(path, 'tail');
+    extend(path, 'head');
+    if (path.length >= 2) paths.push(path);
+  });
+
+  return paths;
+}
+
+function drawSmoothPath(ctx: MantleCanvasRenderingContext2D, path: Point[]): void {
+  const points = path.filter((point, index) => {
+    const previous = path[index - 1];
+    return !previous || distance(previous, point) > 0.35;
+  });
+  if (points.length < 2) return;
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first || !last) return;
+
+  const closed = points.length > 3 && distance(first, last) < 1;
+  if (closed) {
+    points.pop();
+  }
+
+  if (points.length < 2) return;
+
+  if (closed && points.length > 2) {
+    const start = midpoint(points[points.length - 1]!, points[0]!);
+    ctx.moveTo(start.x, start.y);
+    for (let index = 0; index < points.length; index += 1) {
+      const control = points[index]!;
+      const next = points[(index + 1) % points.length]!;
+      const end = midpoint(control, next);
+      ctx.quadraticCurveTo(control.x, control.y, end.x, end.y);
+    }
+    ctx.closePath();
+    return;
+  }
+
+  ctx.moveTo(points[0]!.x, points[0]!.y);
+  if (points.length === 2) {
+    ctx.lineTo(points[1]!.x, points[1]!.y);
+    return;
+  }
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const control = points[index]!;
+    const next = points[index + 1]!;
+    const end = midpoint(control, next);
+    ctx.quadraticCurveTo(control.x, control.y, end.x, end.y);
+  }
+  ctx.lineTo(points[points.length - 1]!.x, points[points.length - 1]!.y);
+}
+
 export const contourLines: BackgroundGenerator = ({
   ctx,
   rect,
@@ -21,12 +137,10 @@ export const contourLines: BackgroundGenerator = ({
 }) => {
   const rng = createRng(`contour-lines::${seed}`);
   const light = isLightPalette(palette);
-  const param = (id: string, fallback: number) =>
-    Math.min(1, Math.max(0, params[id] ?? fallback));
-  const lineDensity = param('lineDensity', intensity);
-  const relief = param('relief', 0.56);
+  const lineDensity = readBackgroundParam(params, 'lineDensity', intensity);
+  const relief = readBackgroundParam(params, 'relief', 0.56);
   const reliefCurve = relief ** 0.68;
-  const accentGlow = param('accentGlow', Math.min(1, intensity * 0.78));
+  const accentGlow = readBackgroundParam(params, 'accentGlow', Math.min(1, intensity * 0.78));
   const accentRgb = parseHexToRgb(palette.accent);
   const strokeRgb = parseHexToRgb(
     light ? mixHex(palette.foreground, palette.background, 0.18) : palette.foreground
@@ -152,7 +266,13 @@ export const contourLines: BackgroundGenerator = ({
     const baseAlpha = (light ? 0.08 : 0.11) + lineDensity * (light ? 0.12 : 0.16);
     const lineWidth = Math.max(0.85, scale * (major ? 1.28 : 0.78));
 
-    ctx.beginPath();
+    const segments: Segment[] = [];
+    const addSegment = (start: Point, end: Point) => {
+      if (distance(start, end) > 0.75) {
+        segments.push({ start, end });
+      }
+    };
+
     for (let row = 0; row < rows; row += 1) {
       const y0 = yAt(row);
       const y1 = yAt(row + 1);
@@ -174,21 +294,42 @@ export const contourLines: BackgroundGenerator = ({
           const start = intersections[0];
           const end = intersections[1];
           if (!start || !end) continue;
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
+          addSegment(start, end);
         } else if (intersections.length === 4) {
           const first = intersections[0];
           const second = intersections[1];
           const third = intersections[2];
           const fourth = intersections[3];
           if (!first || !second || !third || !fourth) continue;
-          ctx.moveTo(first.x, first.y);
-          ctx.lineTo(second.x, second.y);
-          ctx.moveTo(third.x, third.y);
-          ctx.lineTo(fourth.x, fourth.y);
+          const topLeftInside = topLeft >= level;
+          const topRightInside = topRight >= level;
+          const bottomRightInside = bottomRight >= level;
+          const bottomLeftInside = bottomLeft >= level;
+
+          if (
+            topLeftInside === bottomRightInside &&
+            topRightInside === bottomLeftInside &&
+            topLeftInside !== topRightInside
+          ) {
+            if (topLeftInside) {
+              addSegment(first, fourth);
+              addSegment(second, third);
+            } else {
+              addSegment(first, second);
+              addSegment(third, fourth);
+            }
+          } else {
+            addSegment(first, second);
+            addSegment(third, fourth);
+          }
         }
       }
     }
+
+    const paths = stitchSegments(segments);
+
+    ctx.beginPath();
+    paths.forEach((path) => drawSmoothPath(ctx, path));
 
     if (major && accentGlow > 0) {
       const glowStrength = accentGlow * accentGlow * (3 - 2 * accentGlow);

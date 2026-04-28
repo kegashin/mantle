@@ -1,0 +1,107 @@
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  color: var(--color-text-dim);
+  font-size: var(--type-xxs);
+  letter-spacing: 0.02em;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.row:has(.reset) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.swatch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  overflow: hidden;
+  min-width: 0;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.swatch:hover {
+  border-color: var(--color-hairline-strong);
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.swatch:focus-within {
+  border-color: var(--color-hairline-active);
+  outline: none;
+}
+
+.swatchDot {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
+}
+
+.swatchHex {
+  color: var(--color-text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--type-xxs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.swatchInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.reset {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  color: var(--color-text-dim);
+  font-size: var(--type-xxs);
+  white-space: nowrap;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.reset:hover:not(:disabled) {
+  border-color: var(--color-hairline-strong);
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.reset:disabled {
+  cursor: default;
+  opacity: 0.36;
+}

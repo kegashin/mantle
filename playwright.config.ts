@@ -10,7 +10,7 @@ export default defineConfig({
     trace: 'on-first-retry'
   },
   webServer: {
-    command: 'bun run --filter @glyphrame/web dev:e2e',
+    command: 'bun run --filter @mantle/web dev:e2e',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000

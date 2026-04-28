@@ -1,9 +1,17 @@
-import type { GlyphramePalette } from '@glyphrame/schemas';
+import {
+  MANTLE_HEX_COLOR_PATTERN,
+  type MantlePalette
+} from '@mantle/schemas/model';
 
 export type Rgb = { r: number; g: number; b: number };
 
-export function parseHexToRgb(hex: string, fallback: Rgb = { r: 0, g: 0, b: 0 }): Rgb {
-  const cleaned = hex.trim().replace(/^#/, '');
+export function parseHexToRgb(hex: string): Rgb {
+  const trimmed = hex.trim();
+  if (!MANTLE_HEX_COLOR_PATTERN.test(trimmed)) {
+    throw new Error(`Invalid hex color "${hex}".`);
+  }
+
+  const cleaned = trimmed.slice(1);
   const expanded =
     cleaned.length === 3
       ? cleaned
@@ -13,7 +21,6 @@ export function parseHexToRgb(hex: string, fallback: Rgb = { r: 0, g: 0, b: 0 })
       : cleaned.padEnd(6, '0').slice(0, 6);
 
   const value = Number.parseInt(expanded, 16);
-  if (Number.isNaN(value)) return fallback;
 
   return {
     r: (value >> 16) & 0xff,
@@ -43,7 +50,7 @@ export function relativeLuminance(hex: string): number {
 }
 
 /** Treat the palette as light when its background's perceived luminance sits above 0.55. */
-export function isLightPalette(palette: GlyphramePalette): boolean {
+export function isLightPalette(palette: MantlePalette): boolean {
   return relativeLuminance(palette.background) > 0.55;
 }
 
@@ -60,7 +67,7 @@ export function mixHex(hex: string, other: string, ratio: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(blue)}`;
 }
 
-/** Deterministic PRNG (mulberry32) seeded from a string — lets generators stay reproducible. */
+/** Deterministic mulberry32 PRNG seeded from a string. */
 export function createRng(seed: string): () => number {
   let state = 0x811c9dc5;
   for (let i = 0; i < seed.length; i += 1) {

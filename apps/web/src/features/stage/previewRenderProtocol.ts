@@ -1,0 +1,37 @@
+import type {
+  MantleCard,
+  MantleRenderableAsset,
+  MantleSurfaceTarget
+} from '@mantle/schemas/model';
+
+export type PreviewRenderRequestPayload = {
+  card: MantleCard;
+  target: MantleSurfaceTarget;
+  asset?: MantleRenderableAsset | undefined;
+  scale: number;
+  showEmptyPlaceholderText: boolean;
+};
+
+export type PreviewRenderRequest = PreviewRenderRequestPayload & {
+  id: number;
+};
+
+export type PreviewRenderResult = {
+  bitmap: ImageBitmap;
+  width: number;
+  height: number;
+};
+
+export type PreviewRenderFailurePhase = 'render' | 'transfer';
+
+export type PreviewRenderResponse =
+  | (PreviewRenderResult & {
+      id: number;
+      ok: true;
+    })
+  | {
+      id: number;
+      ok: false;
+      phase: PreviewRenderFailurePhase;
+      error: string;
+    };

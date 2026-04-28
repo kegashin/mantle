@@ -1,10 +1,8 @@
 import { createRng, isLightPalette, mixHex, parseHexToRgb, rgbToCss } from '../palette';
+import type { MantleCanvasRenderingContext2D } from '../canvas';
 import type { BackgroundGenerator } from './types';
+import { readBackgroundParam } from './utils';
 
-/**
- * Terminal scanline glow — dark scanline grid with a subtle horizontal glow.
- * Tech/editorial family. Reads as a CRT phosphor screen.
- */
 export const terminalScanline: BackgroundGenerator = ({
   ctx,
   rect,
@@ -17,13 +15,10 @@ export const terminalScanline: BackgroundGenerator = ({
   const scanlineRng = createRng(`terminal-scanline::scanlines::${seed}`);
   const sweepRng = createRng(`terminal-scanline::sweep::${seed}`);
   const glyphRng = createRng(`terminal-scanline::glyphs::${seed}`);
-  const param = (id: string, fallback: number) =>
-    Math.min(1, Math.max(0, params[id] ?? fallback));
-  const scanlineDensity = param('scanlineDensity', intensity);
-  const glyphDensity = param('glyphDensity', Math.min(1, intensity * 0.58));
-  const sweepGlow = param('sweepGlow', intensity);
+  const scanlineDensity = readBackgroundParam(params, 'scanlineDensity', intensity);
+  const glyphDensity = readBackgroundParam(params, 'glyphDensity', Math.min(1, intensity * 0.58));
+  const sweepGlow = readBackgroundParam(params, 'sweepGlow', intensity);
 
-  // Base gradient — slightly warmer in the center, deeper at the edges.
   const centerGradient = ctx.createRadialGradient(
     rect.x + rect.width / 2,
     rect.y + rect.height / 2,
@@ -38,24 +33,22 @@ export const terminalScanline: BackgroundGenerator = ({
   ctx.fillStyle = centerGradient;
   ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
 
-  // Horizontal scanlines.
-  const lineSpacing = Math.max(2, Math.round((5 - scanlineDensity * 3) * scale));
-  const lineThickness = Math.max(1, Math.round(scale * (0.48 + scanlineDensity * 0.72)));
+  const lineSpacing = Math.max(2, Math.round((6 - scanlineDensity * 3) * scale));
+  const lineThickness = Math.max(1, Math.round(scale * (0.4 + scanlineDensity * 0.55)));
   const glowRgb = parseHexToRgb(palette.accent);
-  const baseAlpha = 0.025 + scanlineDensity * 0.13;
+  const baseAlpha = 0.018 + scanlineDensity * 0.085;
 
   ctx.save();
   for (let y = rect.y; y < rect.y + rect.height; y += lineSpacing) {
-    const flicker = 0.75 + scanlineRng() * 0.25;
+    const flicker = 0.78 + scanlineRng() * 0.22;
     ctx.fillStyle = rgbToCss(glowRgb, baseAlpha * flicker);
     ctx.fillRect(rect.x, y, rect.width, lineThickness);
   }
   ctx.restore();
 
-  // Occasional horizontal glow band — reads like a slow sweep.
-  const bands = Math.max(1, Math.round(1 + sweepGlow * 5));
+  const bands = Math.max(0, Math.round(sweepGlow * 4));
   for (let i = 0; i < bands; i += 1) {
-    const bandHeight = rect.height * (0.05 + sweepRng() * (0.1 + sweepGlow * 0.1));
+    const bandHeight = rect.height * (0.05 + sweepRng() * (0.08 + sweepGlow * 0.08));
     const bandCenter = rect.y + sweepRng() * rect.height;
     const bandY = Math.min(
       rect.y + rect.height - bandHeight,
@@ -63,7 +56,7 @@ export const terminalScanline: BackgroundGenerator = ({
     );
     const bandGradient = ctx.createLinearGradient(0, bandY, 0, bandY + bandHeight);
     bandGradient.addColorStop(0, rgbToCss(glowRgb, 0));
-    bandGradient.addColorStop(0.5, rgbToCss(glowRgb, 0.025 + 0.09 * sweepGlow));
+    bandGradient.addColorStop(0.5, rgbToCss(glowRgb, 0.018 + 0.06 * sweepGlow));
     bandGradient.addColorStop(1, rgbToCss(glowRgb, 0));
     ctx.fillStyle = bandGradient;
     ctx.fillRect(rect.x, bandY, rect.width, bandHeight);
@@ -74,11 +67,10 @@ export const terminalScanline: BackgroundGenerator = ({
     return;
   }
 
-  // Sparse glyph rain — deterministic monospace characters at low opacity.
   const glyphRamp = ['0', '1', '/', '\\', '|', '-', '·', ':', '>', '#'];
-  const cellWidth = Math.max(12, Math.round((20 - glyphDensity * 7) * scale));
+  const cellWidth = Math.max(12, Math.round((22 - glyphDensity * 7) * scale));
   const cellHeight = Math.round(cellWidth * 1.6);
-  const glyphAlpha = (isLightPalette(palette) ? 0.12 : 0.16) * (0.35 + glyphDensity * 1.25);
+  const glyphAlpha = (isLightPalette(palette) ? 0.08 : 0.11) * (0.32 + glyphDensity * 0.95);
   const glyphRgb = parseHexToRgb(palette.foreground);
 
   ctx.save();
@@ -89,7 +81,7 @@ export const terminalScanline: BackgroundGenerator = ({
 
   for (let y = rect.y; y < rect.y + rect.height; y += cellHeight) {
     for (let x = rect.x; x < rect.x + rect.width; x += cellWidth) {
-      if (glyphRng() > 0.04 + glyphDensity * 0.3) continue;
+      if (glyphRng() > 0.025 + glyphDensity * 0.22) continue;
       const glyph = glyphRamp[Math.floor(glyphRng() * glyphRamp.length)] ?? '·';
       ctx.fillText(glyph, x, y);
     }
@@ -100,7 +92,7 @@ export const terminalScanline: BackgroundGenerator = ({
 };
 
 function drawVignette(
-  ctx: CanvasRenderingContext2D,
+  ctx: MantleCanvasRenderingContext2D,
   rect: Parameters<BackgroundGenerator>[0]['rect']
 ): void {
   const vignette = ctx.createRadialGradient(

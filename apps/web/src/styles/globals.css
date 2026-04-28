@@ -9,15 +9,16 @@ body {
   min-width: 320px;
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-feature-settings: "ss01", "cv11";
-  letter-spacing: -0.01em;
+  font-feature-settings: "ss01", "cv11", "cv09";
+  font-size: var(--type-md);
+  line-height: 1.45;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow: hidden;
 }
 
-/* Ambient radial light — extremely subtle, keeps monochrome. */
 body::before {
   content: "";
   position: fixed;
@@ -25,12 +26,11 @@ body::before {
   z-index: -2;
   pointer-events: none;
   background:
-    radial-gradient(60vmax 60vmax at 20% 10%, rgba(255, 255, 255, 0.055), transparent 60%),
-    radial-gradient(50vmax 50vmax at 85% 90%, rgba(255, 255, 255, 0.035), transparent 60%),
-    linear-gradient(180deg, #08080a 0%, #030304 100%);
+    radial-gradient(70vmax 70vmax at 18% 12%, rgba(255, 255, 255, 0.05), transparent 60%),
+    radial-gradient(60vmax 60vmax at 88% 92%, rgba(246, 197, 138, 0.025), transparent 65%),
+    linear-gradient(180deg, #08080b 0%, #030305 100%);
 }
 
-/* Film grain overlay. SVG turbulence stays in CSS for zero network cost. */
 body::after {
   content: "";
   position: fixed;
@@ -74,11 +74,10 @@ a {
 }
 
 ::selection {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(246, 245, 242, 0.18);
   color: #fff;
 }
 
-/* Minimal scrollbars. */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -86,9 +85,12 @@ a {
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -104,7 +106,7 @@ a {
   }
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1180px) {
   html,
   body,
   #root {

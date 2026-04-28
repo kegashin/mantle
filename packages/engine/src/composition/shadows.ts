@@ -1,6 +1,7 @@
-import type { GlyphrameFrame, GlyphramePalette } from '@glyphrame/schemas';
+import type { MantleFrame, MantlePalette } from '@mantle/schemas/model';
 
-import { isLightPalette, parseHexToRgb, rgbToCss } from './palette';
+import type { MantleCanvasRenderingContext2D } from './canvas';
+import { parseHexToRgb, rgbToCss } from './palette';
 
 export type ShadowSettings = {
   color: string;
@@ -21,10 +22,6 @@ export type ShadowLayer = {
   } | undefined;
 };
 
-type LegacyShadowSpec = ShadowSettings & {
-  id: string;
-};
-
 const DEFAULT_SHADOW: ShadowSettings = {
   color: '#000000',
   strength: 1,
@@ -32,116 +29,23 @@ const DEFAULT_SHADOW: ShadowSettings = {
   distance: 1
 };
 
-const LEGACY_SHADOWS: LegacyShadowSpec[] = [
-  {
-    id: 'soft-float',
-    color: '#000000',
-    strength: 1,
-    softness: 1,
-    distance: 1
-  },
-  {
-    id: 'deep-soft',
-    color: '#000000',
-    strength: 1.25,
-    softness: 1.35,
-    distance: 1.2
-  },
-  {
-    id: 'paper-float',
-    color: '#23180e',
-    strength: 0.62,
-    softness: 0.95,
-    distance: 0.95
-  },
-  {
-    id: 'warm-float',
-    color: '#3c1e0a',
-    strength: 0.82,
-    softness: 1.18,
-    distance: 1.1
-  },
-  {
-    id: 'subtle',
-    color: '#000000',
-    strength: 0.55,
-    softness: 0.72,
-    distance: 0.7
-  }
-];
-
-const FALLBACK: LegacyShadowSpec = LEGACY_SHADOWS[0]!;
-
-export const SHADOW_PRESET_IDS = LEGACY_SHADOWS.map((spec) => spec.id);
-
 function clamp(value: number | undefined, min: number, max: number, fallback: number): number {
   if (value == null || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, value));
 }
 
-function normalizeHexColor(value: string | undefined, fallback: string): string {
-  const candidate = value?.trim();
-  if (!candidate) return fallback;
-
-  const shortHex = /^#?([0-9a-f]{3})$/i.exec(candidate);
-  if (shortHex) {
-    return `#${shortHex[1]!
-      .split('')
-      .map((channel) => `${channel}${channel}`)
-      .join('')
-      .toLowerCase()}`;
-  }
-
-  const fullHex = /^#?([0-9a-f]{6})$/i.exec(candidate);
-  if (fullHex) return `#${fullHex[1]!.toLowerCase()}`;
-
-  return fallback;
-}
-
-function legacyShadowSettings(id: string | undefined, palette: GlyphramePalette): ShadowSettings {
-  const spec = LEGACY_SHADOWS.find((candidate) => candidate.id === id) ?? FALLBACK;
-
-  if (
-    isLightPalette(palette) &&
-    spec.id !== 'paper-float' &&
-    spec.id !== 'warm-float'
-  ) {
-    return {
-      ...spec,
-      color: '#281a0c',
-      strength: Math.min(spec.strength, 0.62),
-      softness: Math.max(spec.softness, 0.95)
-    };
-  }
-
-  return spec;
-}
-
 export function resolveFrameShadowSettings(
   frame: Pick<
-    GlyphrameFrame,
-    | 'shadowPresetId'
-    | 'shadowColor'
-    | 'shadowStrength'
-    | 'shadowSoftness'
-    | 'shadowDistance'
+    MantleFrame,
+    'shadowColor' | 'shadowStrength' | 'shadowSoftness' | 'shadowDistance'
   >,
-  palette: GlyphramePalette
+  _palette: MantlePalette
 ): ShadowSettings {
-  const hasManualShadow =
-    frame.shadowColor != null ||
-    frame.shadowStrength != null ||
-    frame.shadowSoftness != null ||
-    frame.shadowDistance != null;
-  const base = hasManualShadow
-    ? DEFAULT_SHADOW
-    : legacyShadowSettings(frame.shadowPresetId, palette);
-
   return {
-    color: normalizeHexColor(frame.shadowColor, base.color),
-    strength: clamp(frame.shadowStrength, 0, 2, base.strength),
-    softness: clamp(frame.shadowSoftness, 0, 2.5, base.softness),
-    distance: clamp(frame.shadowDistance, 0, 2, base.distance)
+    color: frame.shadowColor ?? DEFAULT_SHADOW.color,
+    strength: clamp(frame.shadowStrength, 0, 4, DEFAULT_SHADOW.strength),
+    softness: clamp(frame.shadowSoftness, 0, 4, DEFAULT_SHADOW.softness),
+    distance: clamp(frame.shadowDistance, 0, 4, DEFAULT_SHADOW.distance)
   };
 }
 
@@ -156,26 +60,44 @@ export function getShadowLayers(
   const distance = settings.distance;
   const strength = settings.strength;
 
+  // Three-layer drop shadow modelled after physical light:
+  //   1. Contact — tight, slightly darker, anchors the card to a surface.
+  //   2. Ambient — medium blur, carries the main softness perception.
+  //   3. Atmospheric — wide and very soft, gives depth without weight.
+  // Each layer has its own vertical mask so shadows fall down (light is
+  // assumed to come from above-front), with the contact layer most biased
+  // and the atmospheric layer most diffuse.
   return [
     {
-      color: rgbToCss(rgb, 0.11 * strength),
-      blur: reference * 0.064 * (0.5 + softness * 1.05),
+      color: rgbToCss(rgb, 0.13 * strength),
+      blur: reference * 0.006 * (0.5 + softness * 0.55),
       offsetX: 0,
-      offsetY: reference * 0.008 * distance,
+      offsetY: reference * 0.004 * distance,
       mask: {
-        topAlpha: 0.42,
-        midAlpha: 0.68,
-        bottomAlpha: 0.9
+        topAlpha: 0.04,
+        midAlpha: 0.5,
+        bottomAlpha: 1
       }
     },
     {
-      color: rgbToCss(rgb, 0.15 * strength),
-      blur: reference * 0.028 * (0.5 + softness * 0.75),
+      color: rgbToCss(rgb, 0.085 * strength),
+      blur: reference * 0.022 * (0.5 + softness * 0.85),
+      offsetX: 0,
+      offsetY: reference * 0.014 * distance,
+      mask: {
+        topAlpha: 0.18,
+        midAlpha: 0.62,
+        bottomAlpha: 1
+      }
+    },
+    {
+      color: rgbToCss(rgb, 0.05 * strength),
+      blur: reference * 0.06 * (0.5 + softness * 1.1),
       offsetX: 0,
       offsetY: reference * 0.022 * distance,
       mask: {
-        topAlpha: 0,
-        midAlpha: 0.18,
+        topAlpha: 0.42,
+        midAlpha: 0.78,
         bottomAlpha: 1
       }
     }
@@ -183,7 +105,7 @@ export function getShadowLayers(
 }
 
 export function applyShadowLayer(
-  ctx: CanvasRenderingContext2D,
+  ctx: MantleCanvasRenderingContext2D,
   layer: ShadowLayer
 ): void {
   ctx.shadowColor = layer.color;
@@ -192,7 +114,7 @@ export function applyShadowLayer(
   ctx.shadowOffsetY = layer.offsetY;
 }
 
-export function clearShadow(ctx: CanvasRenderingContext2D): void {
+export function clearShadow(ctx: MantleCanvasRenderingContext2D): void {
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;

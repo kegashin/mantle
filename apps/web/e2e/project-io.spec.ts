@@ -1,9 +1,16 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
-test('loads a saved Glyphrame project file', async ({ page }, testInfo) => {
+async function openSection(page: Page, name: string): Promise<void> {
+  const section = page.getByRole('button', { name, exact: true });
+  if ((await section.getAttribute('aria-expanded')) !== 'true') {
+    await section.click();
+  }
+}
+
+test('loads a saved Mantle project file', async ({ page }, testInfo) => {
   const now = '2026-04-24T00:00:00.000Z';
-  const projectPath = testInfo.outputPath('loaded.glyphrame.json');
+  const projectPath = testInfo.outputPath('loaded.mantle.json');
   const project = {
     version: 1,
     id: 'loaded-project',
@@ -18,10 +25,10 @@ test('loads a saved Glyphrame project file', async ({ page }, testInfo) => {
         name: 'Saved Card',
         targetId: 'square',
         templateId: 'single-shot-centered',
-        themeId: 'terminal-glass',
+        themeId: 'terminal-scanline',
         background: {
           family: 'glyph-field',
-          presetId: 'terminal-glass',
+          presetId: 'terminal-scanline',
           seed: 'loaded-project',
           intensity: 0.72,
           palette: {
@@ -33,22 +40,26 @@ test('loads a saved Glyphrame project file', async ({ page }, testInfo) => {
         },
         frame: {
           preset: 'minimal-browser',
+          boxStyle: 'solid',
           padding: 96,
+          contentPadding: 0,
           cornerRadius: 24,
-          shadowPresetId: 'soft-float',
+          shadowColor: '#000000',
+          shadowStrength: 1,
+          shadowSoftness: 1,
+          shadowDistance: 1,
           alignment: 'center'
         },
-        typography: {
-          presetId: 'editorial-sans',
+        text: {
+          placement: 'top',
           align: 'center',
-          headlineScale: 1,
-          subtitleScale: 1,
-          maxWidth: 0.72
-        },
-        copy: {
-          eyebrow: 'Project IO',
-          headline: 'Loaded from a Glyphrame project',
-          subtitle: 'The editor restores saved card data.'
+          titleFont: 'sans',
+          subtitleFont: 'sans',
+          title: 'Loaded from a Mantle project',
+          subtitle: 'The editor restores saved card data.',
+          scale: 1,
+          width: 0.72,
+          gap: 64
         },
         export: {
           format: 'png',
@@ -63,11 +74,12 @@ test('loads a saved Glyphrame project file', async ({ page }, testInfo) => {
         label: 'Square',
         width: 1080,
         height: 1080,
-        platform: 'social'
+        platform: 'social',
+        aspectRatioPresetId: '1:1'
       }
     ],
     brand: {
-      name: 'Glyphrame',
+      name: 'Mantle',
       palette: {
         background: '#08080a',
         foreground: '#f4f1e8',
@@ -77,11 +89,11 @@ test('loads a saved Glyphrame project file', async ({ page }, testInfo) => {
     },
     themes: [
       {
-        id: 'terminal-glass',
-        name: 'Terminal Glass',
+        id: 'terminal-scanline',
+        name: 'Terminal Scanline',
         background: {
           family: 'glyph-field',
-          presetId: 'terminal-glass',
+          presetId: 'terminal-scanline',
           seed: 'loaded-project',
           intensity: 0.72,
           palette: {
@@ -93,17 +105,26 @@ test('loads a saved Glyphrame project file', async ({ page }, testInfo) => {
         },
         frame: {
           preset: 'minimal-browser',
+          boxStyle: 'solid',
           padding: 96,
+          contentPadding: 0,
           cornerRadius: 24,
-          shadowPresetId: 'soft-float',
+          shadowColor: '#000000',
+          shadowStrength: 1,
+          shadowSoftness: 1,
+          shadowDistance: 1,
           alignment: 'center'
         },
-        typography: {
-          presetId: 'editorial-sans',
+        text: {
+          placement: 'top',
           align: 'center',
-          headlineScale: 1,
-          subtitleScale: 1,
-          maxWidth: 0.72
+          titleFont: 'sans',
+          subtitleFont: 'sans',
+          title: 'Loaded from a Mantle project',
+          subtitle: 'The editor restores saved card data.',
+          scale: 1,
+          width: 0.72,
+          gap: 64
         }
       }
     ]
@@ -115,15 +136,27 @@ test('loads a saved Glyphrame project file', async ({ page }, testInfo) => {
   await page.getByTestId('project-file-input').setInputFiles(projectPath);
 
   await expect(page.getByText('Saved Card', { exact: true }).first()).toBeVisible();
+  await openSection(page, 'Text');
+  await openSection(page, 'Canvas size');
   await expect(page.getByRole('button', { name: 'Top', exact: true })).toHaveClass(
     /Active/
   );
   await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
-    'Loaded from a Glyphrame project'
+    'Loaded from a Mantle project'
   );
   await expect(
     page.getByRole('textbox', { name: 'Subtitle', exact: true })
   ).toHaveValue('The editor restores saved card data.');
   await expect(page.getByRole('spinbutton', { name: 'Width' })).toHaveValue('1080');
   await expect(page.getByRole('spinbutton', { name: 'Height' })).toHaveValue('1080');
+});
+
+test('shows a visible error for an invalid project file', async ({ page }, testInfo) => {
+  const projectPath = testInfo.outputPath('broken.mantle.json');
+  await writeFile(projectPath, '{not-json', 'utf8');
+
+  await page.goto('/');
+  await page.getByTestId('project-file-input').setInputFiles(projectPath);
+
+  await expect(page.getByText('Project file could not be opened')).toBeVisible();
 });

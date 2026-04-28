@@ -1,9 +1,17 @@
+# Dependencies
 node_modules/
+
+# Build output and generated state
 dist/
 coverage/
 playwright-report/
 test-results/
-docs/
-.DS_Store
 *.tsbuildinfo
 bun.lockb
+
+# Local/internal project notes
+docs/
+agents.md
+
+# OS noise
+.DS_Store

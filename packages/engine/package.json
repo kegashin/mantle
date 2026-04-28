@@ -1,14 +1,39 @@
 {
-  "name": "@glyphrame/engine",
+  "name": "@mantle/engine",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog.d.ts",
+      "import": "./dist/catalog.js"
+    },
+    "./commands": {
+      "types": "./dist/commands.d.ts",
+      "import": "./dist/commands.js"
+    },
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "import": "./dist/render.js"
+    }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json --noEmit"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.worker.tsbuildinfo",
+    "build": "bun run clean && tsc -p tsconfig.json && bun ../../scripts/fix-dist-imports.mjs dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@glyphrame/schemas": "workspace:*"
+    "@mantle/schemas": "workspace:*",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.0"
   }
 }

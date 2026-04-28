@@ -1,6 +1,7 @@
 {
-  "name": "glyphrame",
+  "name": "mantle",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "packageManager": "bun@1.3.7",
   "workspaces": [
@@ -8,19 +9,20 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --filter @glyphrame/web dev",
-    "build": "bun run --filter @glyphrame/web build",
-    "preview": "bun run --filter @glyphrame/web preview",
+    "dev": "bun run --filter @mantle/web dev",
+    "build:packages": "bun run --filter @mantle/schemas build && bun run --filter @mantle/engine build",
+    "build": "bun run build:packages && bun run --filter @mantle/web build",
+    "preview": "bun run --filter @mantle/web preview",
+    "check:architecture": "bun ./scripts/check-architecture.mjs",
     "typecheck:tooling": "tsc -p tsconfig.tooling.json --noEmit",
-    "typecheck": "bun run typecheck:tooling && bun run --filter @glyphrame/schemas typecheck && bun run --filter @glyphrame/engine typecheck && bun run --filter @glyphrame/web typecheck",
-    "test:unit": "bunx --bun vitest run",
+    "typecheck": "bun run typecheck:tooling && bun run build:packages && bun run --filter @mantle/web typecheck",
+    "test:unit": "bun run build:packages && bunx --bun vitest run",
     "test:unit:watch": "bunx --bun vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "bun run build:packages && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.0",
     "@types/node": "^24.0.0",
-    "@webgpu/types": "^0.1.64",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   }

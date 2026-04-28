@@ -1,5 +1,19 @@
+import {
+  MANTLE_BACKGROUND_PRESET_IDS,
+  type MantleBackgroundParamId,
+  type MantleBackgroundParams,
+  type MantleBackgroundPresetId
+} from '@mantle/schemas/model';
+
+import { auroraGradient } from './auroraGradient';
+import { symbolWave } from './symbolWave';
 import { contourLines } from './contourLines';
 import { dotGrid } from './dotGrid';
+import { fallingPattern } from './fallingPattern';
+import { marbling } from './marbling';
+import { signalField } from './signalField';
+import { smokeVeil } from './smokeVeil';
+import { softGradient } from './softGradient';
 import { solidColor } from './solidColor';
 import { terminalScanline } from './terminalScanline';
 import type { BackgroundGenerator } from './types';
@@ -9,11 +23,7 @@ export type {
   BackgroundGeneratorInput
 } from './types';
 
-export type BackgroundPresetId =
-  | 'solid-color'
-  | 'terminal-scanline'
-  | 'contour-lines'
-  | 'dot-grid';
+export type BackgroundPresetId = MantleBackgroundPresetId;
 
 export type BackgroundPresetDescriptor = {
   id: BackgroundPresetId;
@@ -24,7 +34,7 @@ export type BackgroundPresetDescriptor = {
 };
 
 export type BackgroundParamDescriptor = {
-  id: string;
+  id: MantleBackgroundParamId;
   label: string;
   defaultValue: number;
   min: number;
@@ -39,6 +49,246 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
     hint: 'Flat background color',
     family: 'quiet',
     params: []
+  },
+  {
+    id: 'soft-gradient',
+    label: 'Linear Gradient',
+    hint: 'Directional gradient wash',
+    family: 'mixed',
+    params: [
+      {
+        id: 'angle',
+        label: 'Angle',
+        defaultValue: 0.58,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'spread',
+        label: 'Color spread',
+        defaultValue: 0.58,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'glow',
+        label: 'Glow',
+        defaultValue: 0.46,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'grain',
+        label: 'Grain',
+        defaultValue: 0.08,
+        min: 0,
+        max: 1,
+        step: 0.01
+      }
+    ]
+  },
+  {
+    id: 'aurora-gradient',
+    label: 'Aurora Gradient',
+    hint: 'Layered radial glow',
+    family: 'mixed',
+    params: [
+      {
+        id: 'glow',
+        label: 'Glow',
+        defaultValue: 4,
+        min: 0,
+        max: 4,
+        step: 0.01
+      },
+      {
+        id: 'spread',
+        label: 'Spread',
+        defaultValue: 0.7,
+        min: 0,
+        max: 3,
+        step: 0.01
+      },
+      {
+        id: 'grain',
+        label: 'Grain',
+        defaultValue: 0.06,
+        min: 0,
+        max: 1,
+        step: 0.01
+      }
+    ]
+  },
+  {
+    id: 'marbling',
+    label: 'Marbling',
+    hint: 'Color zones with curved borders',
+    family: 'mixed',
+    params: [
+      {
+        id: 'complexity',
+        label: 'Region count',
+        defaultValue: 1,
+        min: 0,
+        max: 2,
+        step: 0.01
+      },
+      {
+        id: 'sharpness',
+        label: 'Edge sharpness',
+        defaultValue: 1,
+        min: 0,
+        max: 2,
+        step: 0.01
+      },
+      {
+        id: 'curve',
+        label: 'Curve amount',
+        defaultValue: 1,
+        min: 0,
+        max: 4,
+        step: 0.01
+      },
+      {
+        id: 'grain',
+        label: 'Grain',
+        defaultValue: 0.06,
+        min: 0,
+        max: 2,
+        step: 0.01
+      }
+    ]
+  },
+  {
+    id: 'signal-field',
+    label: 'Signal Field',
+    hint: 'Shader-like electric bands',
+    family: 'tech',
+    params: [
+      {
+        id: 'lineDensity',
+        label: 'Band frequency',
+        defaultValue: 0.6,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'thickness',
+        label: 'Core width',
+        defaultValue: 0.34,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'glow',
+        label: 'Halo intensity',
+        defaultValue: 0.86,
+        min: 0,
+        max: 1,
+        step: 0.01
+      }
+    ]
+  },
+  {
+    id: 'symbol-wave',
+    label: 'Symbol Wave',
+    hint: 'Full-field glyphs, luminous wave',
+    family: 'tech',
+    params: [
+      {
+        id: 'glyphAmount',
+        label: 'Symbol density',
+        defaultValue: 0.62,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'waveHeight',
+        label: 'Wave shape',
+        defaultValue: 0.58,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'glow',
+        label: 'Glow',
+        defaultValue: 0.84,
+        min: 0,
+        max: 1,
+        step: 0.01
+      }
+    ]
+  },
+  {
+    id: 'falling-pattern',
+    label: 'Falling Pattern',
+    hint: 'Descending glyph trails',
+    family: 'tech',
+    params: [
+      {
+        id: 'glyphDensity',
+        label: 'Glyph amount',
+        defaultValue: 0.52,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'sweepGlow',
+        label: 'Trail length',
+        defaultValue: 0.62,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'glow',
+        label: 'Glow',
+        defaultValue: 0.78,
+        min: 0,
+        max: 1,
+        step: 0.01
+      }
+    ]
+  },
+  {
+    id: 'smoke-veil',
+    label: 'Smoke Veil',
+    hint: 'Soft smoke and grain',
+    family: 'editorial',
+    params: [
+      {
+        id: 'details',
+        label: 'Smoke detail',
+        defaultValue: 0.62,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'glow',
+        label: 'Glow',
+        defaultValue: 0.58,
+        min: 0,
+        max: 1,
+        step: 0.01
+      },
+      {
+        id: 'grain',
+        label: 'Grain',
+        defaultValue: 0.08,
+        min: 0,
+        max: 1,
+        step: 0.01
+      }
+    ]
   },
   {
     id: 'terminal-scanline',
@@ -115,6 +365,14 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
         label: 'Dot opacity',
         defaultValue: 0.34,
         min: 0,
+        max: 2,
+        step: 0.01
+      },
+      {
+        id: 'dotSize',
+        label: 'Dot size',
+        defaultValue: 0.25,
+        min: 0,
         max: 1,
         step: 0.01
       },
@@ -132,53 +390,52 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
 
 const REGISTRY: Record<BackgroundPresetId, BackgroundGenerator> = {
   'solid-color': solidColor,
+  'soft-gradient': softGradient,
+  'aurora-gradient': auroraGradient,
+  'marbling': marbling,
+  'smoke-veil': smokeVeil,
+  'signal-field': signalField,
+  'symbol-wave': symbolWave,
+  'falling-pattern': fallingPattern,
   'terminal-scanline': terminalScanline,
   'contour-lines': contourLines,
   'dot-grid': dotGrid
 };
 
-const PRESET_ALIASES: Record<string, BackgroundPresetId> = {
-  default: 'solid-color',
-  solid: 'solid-color',
-  'terminal-glass': 'terminal-scanline',
-  'quiet-graphite': 'contour-lines',
-  'docs-clean': 'dot-grid'
-};
-
-const PRESETS_BY_ID = Object.fromEntries(
+const PRESETS_BY_ID = new Map<BackgroundPresetId, BackgroundPresetDescriptor>(
   BACKGROUND_PRESETS.map((preset) => [preset.id, preset])
-) as Record<BackgroundPresetId, BackgroundPresetDescriptor>;
+);
 
-export const BACKGROUND_PRESET_IDS = Object.keys(REGISTRY) as BackgroundPresetId[];
-
-export function normalizeBackgroundPresetId(presetId: string): BackgroundPresetId {
-  if (presetId in REGISTRY) {
-    return presetId as BackgroundPresetId;
-  }
-  return PRESET_ALIASES[presetId] ?? 'terminal-scanline';
-}
+export const BACKGROUND_PRESET_IDS = MANTLE_BACKGROUND_PRESET_IDS;
 
 export function resolveBackgroundPresetDescriptor(
-  presetId: string
+  presetId: BackgroundPresetId
 ): BackgroundPresetDescriptor {
-  return PRESETS_BY_ID[normalizeBackgroundPresetId(presetId)];
+  const descriptor = PRESETS_BY_ID.get(presetId);
+  if (!descriptor) {
+    throw new Error(`Unknown Mantle background preset "${presetId}".`);
+  }
+  return descriptor;
 }
 
 export function getBackgroundPresetDefaultParams(
-  presetId: string
-): Record<string, number> {
-  return Object.fromEntries(
-    resolveBackgroundPresetDescriptor(presetId).params.map((param) => [
-      param.id,
-      param.defaultValue
-    ])
-  );
+  presetId: BackgroundPresetId
+): MantleBackgroundParams {
+  const params: MantleBackgroundParams = {};
+  resolveBackgroundPresetDescriptor(presetId).params.forEach((param) => {
+    params[param.id] = param.defaultValue;
+  });
+  return params;
 }
 
-export function resolveBackgroundGenerator(presetId: string): BackgroundGenerator {
-  return REGISTRY[normalizeBackgroundPresetId(presetId)];
+export function resolveBackgroundGenerator(presetId: BackgroundPresetId): BackgroundGenerator {
+  const generator = REGISTRY[presetId];
+  if (!generator) {
+    throw new Error(`Unknown Mantle background preset "${presetId}".`);
+  }
+  return generator;
 }
 
 export function isKnownBackgroundPresetId(presetId: string): presetId is BackgroundPresetId {
-  return presetId in REGISTRY;
+  return MANTLE_BACKGROUND_PRESET_IDS.some((knownId) => knownId === presetId);
 }

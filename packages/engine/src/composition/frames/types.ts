@@ -1,27 +1,23 @@
 import type {
-  GlyphrameFrameBoxStyle,
-  GlyphrameFramePreset,
-  GlyphramePalette
-} from '@glyphrame/schemas';
+  MantleFrameBoxStyle,
+  MantleFramePreset,
+  MantlePalette
+} from '@mantle/schemas/model';
 
+import type { MantleCanvasRenderingContext2D } from '../canvas';
 import type { Rect } from '../types';
 
-export type { Rect } from '../types';
-
-export type FrameChromePreset = Exclude<
-  GlyphrameFramePreset,
-  'soft-panel' | 'glass-panel'
->;
+export type FrameChromePreset = MantleFramePreset;
 
 export type FrameChromeInput = {
-  ctx: CanvasRenderingContext2D;
+  ctx: MantleCanvasRenderingContext2D;
   /** Outer frame rectangle. Frame chrome and content insets are drawn inside this. */
   imageRect: Rect;
   /** Corner radius of the outer frame rectangle, in draw-space pixels. */
   cornerRadius: number;
   /** Inner spacing between frame chrome and clipped screenshot, in draw-space pixels. */
   contentPadding: number;
-  palette: GlyphramePalette;
+  palette: MantlePalette;
   /** Draw-space width of the full card (used to scale chrome details). */
   cardWidth: number;
   /** Title text for the chrome bar, derived from frame settings or card name. */
@@ -43,12 +39,11 @@ export type FrameChromeResult = {
 export type FrameChrome = (input: FrameChromeInput) => FrameChromeResult;
 
 export type FrameBoxInput = Omit<FrameChromeInput, 'title'> & {
-  boxStyle: GlyphrameFrameBoxStyle;
+  boxStyle: MantleFrameBoxStyle;
   boxColor?: string | undefined;
-  boxBorderColor?: string | undefined;
   boxOpacity?: number | undefined;
+  glassBlur?: number | undefined;
+  glassOutlineOpacity?: number | undefined;
 };
-
-export type FrameBoxPainter = (input: FrameBoxInput) => void;
 
 export type FrameRegistry = Record<FrameChromePreset, FrameChrome>;

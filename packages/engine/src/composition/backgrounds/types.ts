@@ -1,18 +1,22 @@
-import type { GlyphramePalette } from '@glyphrame/schemas';
+import type {
+  MantleBackgroundParams,
+  MantlePalette
+} from '@mantle/schemas/model';
 
-import type { Rect } from '../types';
-
-export type { Rect } from '../types';
+import type { MantleCanvasRenderingContext2D } from '../canvas';
+import type { MantleRenderMode, Rect } from '../types';
 
 export type BackgroundGeneratorInput = {
-  ctx: CanvasRenderingContext2D;
+  ctx: MantleCanvasRenderingContext2D;
   rect: Rect;
-  palette: GlyphramePalette;
+  palette: MantlePalette;
+  colors?: string[] | undefined;
   intensity: number;
-  params: Record<string, number>;
+  params: MantleBackgroundParams;
   seed: string;
+  renderMode: MantleRenderMode;
   /** Draw-space scale factor relative to the nominal 1600-wide target. */
   scale: number;
 };
 
-export type BackgroundGenerator = (input: BackgroundGeneratorInput) => void;
+export type BackgroundGenerator = (input: BackgroundGeneratorInput) => void | Promise<void>;

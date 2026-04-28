@@ -1,53 +1,72 @@
 import {
-  BACKGROUND_PRESETS,
   FRAME_BOX_STYLE_IDS,
   FRAME_CHROME_PRESET_IDS,
-  normalizeBackgroundPresetId,
-  normalizeFrameChromePreset,
   resolveFrameShadowSettings,
   resolveFrameBoxStyle,
   resolveBackgroundPresetDescriptor
-} from '@glyphrame/engine';
+} from '@mantle/engine/catalog';
 import type {
-  GlyphrameCard,
-  GlyphrameExportFormat,
-  GlyphrameFrameBoxStyle,
-  GlyphrameFramePreset,
-  GlyphramePalette,
-  GlyphrameTextFont,
-  GlyphrameTextPlacement,
-  GlyphrameSurfaceAspectRatioPreset,
-  GlyphrameSurfaceTarget
-} from '@glyphrame/schemas';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+  MantleCard,
+  MantleBackgroundParamId,
+  MantleBackgroundPresetId,
+  MantleExportFormat,
+  MantleFrameBoxStyle,
+  MantleFramePreset,
+  MantlePalette,
+  MantleTextFont,
+  MantleTextPlacement,
+  MantleSurfaceAspectRatioPreset,
+  MantleSurfaceTarget
+} from '@mantle/schemas/model';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode
+} from 'react';
 
+import { ColorSwatch } from '../../components/ColorSwatch';
 import { Icon, type IconName } from '../../components/Icon';
+import {
+  MAX_GRADIENT_COLORS,
+  MIN_GRADIENT_COLORS,
+  createNextGradientColor,
+  getGradientColorsFromBackground,
+  isColorListBackgroundPreset
+} from '../../lib/backgroundColors';
+import { CSS_GLASS_FRAME_DEFAULTS } from '../../lib/frameMaterial';
 import styles from './InspectorPanel.module.css';
 
 type InspectorPanelProps = {
-  card: GlyphrameCard;
-  targets: GlyphrameSurfaceTarget[];
+  card: MantleCard;
+  targets: MantleSurfaceTarget[];
   onSurfaceSizeChange: (
-    patch: Partial<Pick<GlyphrameSurfaceTarget, 'width' | 'height'>>,
+    patch: Partial<Pick<MantleSurfaceTarget, 'width' | 'height'>>,
     options?: {
       ratio?: number;
       anchor?: 'width' | 'height';
-      aspectRatioPresetId?: GlyphrameSurfaceAspectRatioPreset;
+      aspectRatioPresetId?: MantleSurfaceAspectRatioPreset;
     }
   ) => void;
   onSurfaceAspectRatioChange: (
-    presetId: GlyphrameSurfaceAspectRatioPreset,
+    presetId: MantleSurfaceAspectRatioPreset,
     ratio?: number
   ) => void;
-  onBackgroundPresetChange: (presetId: string) => void;
+  onBackgroundPresetChange: (presetId: MantleBackgroundPresetId) => void;
   onBackgroundRandomize: () => void;
-  onBackgroundParamChange: (paramId: string, value: number) => void;
-  onPaletteChange: (patch: Partial<GlyphramePalette>) => void;
-  onFramePresetChange: (preset: GlyphrameFramePreset) => void;
-  onFrameBoxStyleChange: (style: GlyphrameFrameBoxStyle) => void;
+  onBackgroundColorsReset: () => void;
+  onBackgroundParamChange: (paramId: MantleBackgroundParamId, value: number) => void;
+  onBackgroundColorsChange: (colors: string[]) => void;
+  onPaletteChange: (patch: Partial<MantlePalette>) => void;
+  onFramePresetChange: (preset: MantleFramePreset) => void;
+  onFrameBoxStyleChange: (style: MantleFrameBoxStyle) => void;
   onFrameMaterialChange: (
     patch: Partial<
-      Pick<GlyphrameCard['frame'], 'boxColor' | 'boxBorderColor' | 'boxOpacity'>
+      Pick<
+        MantleCard['frame'],
+        'boxColor' | 'boxOpacity' | 'glassBlur' | 'glassOutlineOpacity'
+      >
     >
   ) => void;
   onFrameChromeTextChange: (value: string | undefined) => void;
@@ -57,33 +76,34 @@ type InspectorPanelProps = {
   onFrameShadowChange: (
     patch: Partial<
       Pick<
-        GlyphrameCard['frame'],
+        MantleCard['frame'],
         'shadowColor' | 'shadowStrength' | 'shadowSoftness' | 'shadowDistance'
       >
     >
   ) => void;
-  onTextChange: (patch: Partial<GlyphrameCard['text']>) => void;
-  onExportFormatChange: (value: GlyphrameExportFormat) => void;
+  onTextChange: (patch: Partial<MantleCard['text']>) => void;
+  onExportFormatChange: (value: MantleExportFormat) => void;
   onExportScaleChange: (value: number) => void;
   onExportQualityChange: (value: number) => void;
 };
 
-const BOX_STYLE_LABELS: Record<GlyphrameFrameBoxStyle, { label: string; icon: IconName }> = {
+type SliderFillStyle = CSSProperties & Record<'--slider-fill', string>;
+type IconChoiceMeta = { label: string; icon: IconName };
+
+const BOX_STYLE_LABELS: Record<MantleFrameBoxStyle, IconChoiceMeta> = {
   none: { label: 'None', icon: 'image' },
   solid: { label: 'Panel', icon: 'split' },
-  'soft-panel': { label: 'Glass', icon: 'sparkle' },
   'glass-panel': { label: 'Glass', icon: 'sparkle' }
 };
 
-const CHROME_LABELS: Record<
-  Exclude<GlyphrameFramePreset, 'soft-panel' | 'glass-panel'>,
-  { label: string; icon: IconName }
-> = {
+const CHROME_LABELS: Record<MantleFramePreset, IconChoiceMeta> = {
   none: { label: 'None', icon: 'image' },
   'macos-window': { label: 'macOS window', icon: 'split' },
   'minimal-browser': { label: 'Browser', icon: 'eye' },
   'terminal-window': { label: 'Terminal', icon: 'sparkle' },
-  'windows-window': { label: 'Windows', icon: 'split' }
+  'windows-window': { label: 'Windows', icon: 'split' },
+  'code-editor': { label: 'Code editor', icon: 'sliders' },
+  'document-page': { label: 'Document', icon: 'film' }
 };
 
 const ALIGN_OPTIONS: Array<{ value: 'left' | 'center' | 'right'; label: string }> = [
@@ -92,7 +112,7 @@ const ALIGN_OPTIONS: Array<{ value: 'left' | 'center' | 'right'; label: string }
   { value: 'right', label: 'Right' }
 ];
 
-const TEXT_PLACEMENT_OPTIONS: Array<{ value: GlyphrameTextPlacement; label: string }> = [
+const TEXT_PLACEMENT_OPTIONS: Array<{ value: MantleTextPlacement; label: string }> = [
   { value: 'none', label: 'None' },
   { value: 'top', label: 'Top' },
   { value: 'bottom', label: 'Bottom' },
@@ -100,7 +120,7 @@ const TEXT_PLACEMENT_OPTIONS: Array<{ value: GlyphrameTextPlacement; label: stri
   { value: 'right', label: 'Right' }
 ];
 
-const TEXT_FONT_OPTIONS: Array<{ value: GlyphrameTextFont; label: string }> = [
+const TEXT_FONT_OPTIONS: Array<{ value: MantleTextFont; label: string }> = [
   { value: 'sans', label: 'Sans' },
   { value: 'system', label: 'System' },
   { value: 'display', label: 'Display' },
@@ -113,39 +133,54 @@ const TEXT_FONT_OPTIONS: Array<{ value: GlyphrameTextFont; label: string }> = [
   { value: 'condensed', label: 'Condensed' }
 ];
 
-const EXPORT_FORMATS: Array<{ value: GlyphrameExportFormat; label: string }> = [
+function isMantleTextFont(value: string): value is MantleTextFont {
+  return TEXT_FONT_OPTIONS.some((option) => option.value === value);
+}
+
+function resolveTextFontValue(
+  value: string,
+  fallback: MantleTextFont
+): MantleTextFont {
+  return isMantleTextFont(value) ? value : fallback;
+}
+
+const EXPORT_FORMATS: Array<{ value: MantleExportFormat; label: string }> = [
   { value: 'png', label: 'PNG' },
   { value: 'jpeg', label: 'JPEG' },
   { value: 'webp', label: 'WebP' },
   { value: 'avif', label: 'AVIF' }
 ];
 
+const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
+const formatTurnsAsDegrees = (value: number) => `${Math.round(value * 360)}°`;
+const formatPx = (value: number) => `${value}px`;
+const formatFractionalPx = (value: number) =>
+  `${Number.isInteger(value) ? value : value.toFixed(1)}px`;
+const formatMultiplier = (value: number) => `${value}×`;
+const formatPreciseMultiplier = (value: number) => `${value.toFixed(2)}×`;
+
+function formatBackgroundParamValue(
+  paramId: MantleBackgroundParamId,
+  value: number
+): string {
+  return paramId === 'angle' ? formatTurnsAsDegrees(value) : formatPercent(value);
+}
+
 function defaultBoxColor(
-  boxStyle: GlyphrameFrameBoxStyle,
-  palette: GlyphramePalette
+  boxStyle: MantleFrameBoxStyle,
+  palette: MantlePalette
 ): string {
-  return boxStyle === 'solid' ? palette.background : '#ffffff';
+  return boxStyle === 'solid' ? palette.background : CSS_GLASS_FRAME_DEFAULTS.boxColor;
 }
 
-function defaultBoxBorderColor(
-  boxStyle: GlyphrameFrameBoxStyle,
-  palette: GlyphramePalette
-): string {
-  if (boxStyle === 'solid') return palette.foreground;
-  return '#ffffff';
-}
-
-function boxColorLabels(boxStyle: GlyphrameFrameBoxStyle): {
-  tint: string;
-  edge: string;
-} {
-  if (boxStyle === 'glass-panel' || boxStyle === 'soft-panel') {
-    return { tint: 'Glass tint', edge: 'Glass edge' };
+function boxColorLabel(boxStyle: MantleFrameBoxStyle): string {
+  if (boxStyle === 'glass-panel') {
+    return 'Color';
   }
-  return { tint: 'Panel color', edge: 'Panel edge' };
+  return 'Panel color';
 }
 
-type AspectMode = Exclude<GlyphrameSurfaceAspectRatioPreset, 'custom'>;
+type AspectMode = MantleSurfaceAspectRatioPreset;
 
 const ASPECT_RATIO_OPTIONS: Array<{
   value: AspectMode;
@@ -164,19 +199,36 @@ const ASPECT_RATIO_OPTIONS: Array<{
 function Section({
   icon,
   title,
+  defaultOpen = false,
   children
 }: {
   icon: IconName;
   title: string;
+  defaultOpen?: boolean;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+
   return (
-    <section className={styles.section}>
-      <header className={styles.sectionHeader}>
-        <Icon name={icon} size={13} />
-        <span>{title}</span>
-      </header>
-      <div className={styles.sectionBody}>{children}</div>
+    <section className={open ? `${styles.section} ${styles.sectionOpen}` : styles.section}>
+      <button
+        type="button"
+        className={styles.sectionHeader}
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <span className={styles.sectionIcon}>
+          <Icon name={icon} size={13} aria-hidden="true" />
+        </span>
+        <span className={styles.sectionTitle}>{title}</span>
+        <span
+          className={open ? `${styles.sectionChevron} ${styles.sectionChevronOpen}` : styles.sectionChevron}
+          aria-hidden="true"
+        >
+          <Icon name="chevron" size={14} />
+        </span>
+      </button>
+      {open ? <div className={styles.sectionBody}>{children}</div> : null}
     </section>
   );
 }
@@ -260,6 +312,41 @@ function Segmented<T extends string>({
   );
 }
 
+function IconChoiceGrid<T extends string>({
+  activeValue,
+  values,
+  labels,
+  onChange
+}: {
+  activeValue: T;
+  values: readonly T[];
+  labels: Record<T, IconChoiceMeta>;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <div className={styles.frameList}>
+      {values.map((value) => {
+        const meta = labels[value];
+        return (
+          <button
+            key={value}
+            type="button"
+            className={
+              value === activeValue
+                ? `${styles.frameButton} ${styles.frameButtonActive}`
+                : styles.frameButton
+            }
+            onClick={() => onChange(value)}
+          >
+            <Icon name={meta.icon} size={13} aria-hidden="true" />
+            <span>{meta.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Slider({
   label,
   min,
@@ -277,65 +364,38 @@ function Slider({
   format?: (value: number) => string;
   onChange: (value: number) => void;
 }) {
+  const span = max - min;
+  const fillPercent = span > 0 ? Math.min(1, Math.max(0, (value - min) / span)) * 100 : 0;
+  const sliderFillStyle: SliderFillStyle = {
+    '--slider-fill': `${fillPercent}%`
+  };
+
   return (
     <label className={styles.slider}>
       <span className={styles.sliderHead}>
         <span>{label}</span>
         <span className={styles.sliderValue}>{format(value)}</span>
       </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.currentTarget.value))}
-      />
-    </label>
-  );
-}
-
-function ColorField({
-  label,
-  value,
-  onChange,
-  onReset,
-  resetDisabled = false
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  onReset?: () => void;
-  resetDisabled?: boolean;
-}) {
-  return (
-    <div className={styles.colorField}>
-      <span className={styles.colorLabel}>{label}</span>
-      <div
-        className={
-          onReset
-            ? `${styles.colorControl} ${styles.colorControlWithReset}`
-            : styles.colorControl
-        }
-      >
+      <span className={styles.sliderRow}>
+        <span className={styles.sliderTicks} aria-hidden="true">
+          <span className={styles.sliderTickMajor} />
+          <span className={styles.sliderTickMinor} />
+          <span className={styles.sliderTickMajor} />
+          <span className={styles.sliderTickMinor} />
+          <span className={styles.sliderTickMajor} />
+        </span>
         <input
-          type="color"
+          className={styles.sliderInput}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
           value={value}
-          onChange={(event) => onChange(event.currentTarget.value)}
+          style={sliderFillStyle}
+          onChange={(event) => onChange(Number(event.currentTarget.value))}
         />
-        <span className={styles.colorHex}>{value.toUpperCase()}</span>
-        {onReset ? (
-          <button
-            type="button"
-            className={styles.colorResetButton}
-            disabled={resetDisabled}
-            onClick={onReset}
-          >
-            Reset
-          </button>
-        ) : null}
-      </div>
-    </div>
+      </span>
+    </label>
   );
 }
 
@@ -350,7 +410,7 @@ function gcd(left: number, right: number): number {
   return a || 1;
 }
 
-function getSimplifiedRatioParts(target: GlyphrameSurfaceTarget | undefined): {
+function getSimplifiedRatioParts(target: MantleSurfaceTarget | undefined): {
   width: number;
   height: number;
 } {
@@ -374,9 +434,10 @@ export function InspectorPanel({
   targets,
   onSurfaceSizeChange,
   onSurfaceAspectRatioChange,
-  onBackgroundPresetChange,
   onBackgroundRandomize,
+  onBackgroundColorsReset,
   onBackgroundParamChange,
+  onBackgroundColorsChange,
   onPaletteChange,
   onFramePresetChange,
   onFrameBoxStyleChange,
@@ -399,7 +460,6 @@ export function InspectorPanel({
   );
   const activeAspectRatio = useMemo<AspectMode>(() => {
     if (!activeTarget) return 'free';
-    if (activeTarget.aspectRatioPresetId === 'custom') return 'free';
     if (activeTarget.aspectRatioPresetId) return activeTarget.aspectRatioPresetId;
 
     const ratio = activeTarget.width / activeTarget.height;
@@ -420,21 +480,24 @@ export function InspectorPanel({
     return ASPECT_RATIO_OPTIONS.find((option) => option.value === activeAspectRatio)
       ?.ratio;
   }, [activeAspectRatio, activeTarget]);
-  const activeBackgroundPresetId = normalizeBackgroundPresetId(
-    card.background.presetId
-  );
+  const activeBackgroundPresetId = card.background.presetId;
   const activeBackgroundPreset = resolveBackgroundPresetDescriptor(
     activeBackgroundPresetId
+  );
+  const gradientColors = useMemo(
+    () => getGradientColorsFromBackground(card.background),
+    [card.background]
   );
   const activeFrameBoxStyle = resolveFrameBoxStyle(card.frame);
   const exportWidth = activeTarget ? activeTarget.width * card.export.scale : 0;
   const exportHeight = activeTarget ? activeTarget.height * card.export.scale : 0;
-  const activeFrameChromePreset = normalizeFrameChromePreset(card.frame.preset);
+  const activeFrameChromePreset = card.frame.preset;
+  const isGlassMaterial = activeFrameBoxStyle === 'glass-panel';
   const shadowSettings = resolveFrameShadowSettings(card.frame, palette);
   const updateShadowSettings = (
     patch: Partial<
       Pick<
-        GlyphrameCard['frame'],
+        MantleCard['frame'],
         'shadowColor' | 'shadowStrength' | 'shadowSoftness' | 'shadowDistance'
       >
     >
@@ -446,25 +509,37 @@ export function InspectorPanel({
       shadowDistance: shadowSettings.distance,
       ...patch
     });
-  const frameColorLabels = boxColorLabels(activeFrameBoxStyle);
+  const frameColorLabel = boxColorLabel(activeFrameBoxStyle);
   const frameInsetLabel =
     activeFrameChromePreset === 'none' ? 'Content inset' : 'Chrome gap';
+  const usesColorList = isColorListBackgroundPreset(activeBackgroundPresetId);
   const showAccentColor =
-    activeBackgroundPresetId !== 'dot-grid' &&
-    activeBackgroundPresetId !== 'solid-color';
-  const showForegroundColor = activeBackgroundPresetId !== 'solid-color';
+    usesColorList ||
+    (activeBackgroundPresetId !== 'dot-grid' &&
+      activeBackgroundPresetId !== 'solid-color');
+  const showForegroundColor =
+    activeBackgroundPresetId !== 'solid-color' && !usesColorList;
   const showRandomize =
+    usesColorList ||
+    activeBackgroundPresetId === 'symbol-wave' ||
+    activeBackgroundPresetId === 'falling-pattern' ||
+    activeBackgroundPresetId === 'signal-field' ||
+    activeBackgroundPresetId === 'smoke-veil' ||
     activeBackgroundPresetId === 'terminal-scanline' ||
     activeBackgroundPresetId === 'contour-lines';
-  const paletteClassName = showForegroundColor
-    ? showAccentColor
+  const colorListLabel = 'Gradient colors';
+  const paletteFieldCount =
+    1 + (showForegroundColor ? 1 : 0) + (showAccentColor ? 1 : 0);
+  const paletteClassName =
+    paletteFieldCount >= 3
       ? styles.paletteRow
-      : `${styles.paletteRow} ${styles.paletteRowCompact}`
-    : `${styles.paletteRow} ${styles.paletteRowSingle}`;
+      : paletteFieldCount === 2
+        ? `${styles.paletteRow} ${styles.paletteRowCompact}`
+        : `${styles.paletteRow} ${styles.paletteRowSingle}`;
   const isSideText = card.text.placement === 'left' || card.text.placement === 'right';
   const textWidthMin = isSideText ? 0.08 : 0.2;
   const textWidthMax = isSideText ? 0.52 : 1;
-  const updateTextPlacement = (placement: GlyphrameTextPlacement) => {
+  const updateTextPlacement = (placement: MantleTextPlacement) => {
     const sidePlacement = placement === 'left' || placement === 'right';
     onTextChange({
       placement,
@@ -476,6 +551,262 @@ export function InspectorPanel({
 
   return (
     <aside className={styles.inspector}>
+      <Section icon="grain" title="Background" defaultOpen>
+        <div className={styles.presetIdentity}>
+          <span className={styles.identityLabel}>{activeBackgroundPreset.label}</span>
+          <span className={styles.identityHint}>{activeBackgroundPreset.hint}</span>
+        </div>
+        {activeBackgroundPreset.params.length > 0 ? (
+          <div className={styles.parameterStack}>
+            {activeBackgroundPreset.params.map((param) => (
+              <Slider
+                key={param.id}
+                label={param.label}
+                min={param.min}
+                max={param.max}
+                step={param.step}
+                value={card.background.params?.[param.id] ?? param.defaultValue}
+                format={(value) => formatBackgroundParamValue(param.id, value)}
+                onChange={(value) => onBackgroundParamChange(param.id, value)}
+              />
+            ))}
+          </div>
+        ) : null}
+        <div className={styles.backgroundActions}>
+          {showRandomize ? (
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={onBackgroundRandomize}
+              title="Randomize background layout"
+            >
+              <Icon name="reset" size={13} aria-hidden="true" />
+              <span>Randomize</span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={styles.actionButton}
+            onClick={onBackgroundColorsReset}
+            title="Reset background colors"
+          >
+            <Icon name="reset" size={13} aria-hidden="true" />
+            <span>Reset colors</span>
+          </button>
+        </div>
+        {usesColorList ? (
+          <div className={styles.gradientColorPanel}>
+            <div className={styles.gradientColorHeader}>
+              <span>{colorListLabel}</span>
+              <button
+                type="button"
+                className={styles.gradientAddButton}
+                disabled={gradientColors.length >= MAX_GRADIENT_COLORS}
+                onClick={() =>
+                  onBackgroundColorsChange([
+                    ...gradientColors,
+                    createNextGradientColor(gradientColors)
+                  ])
+                }
+              >
+                Add color
+              </button>
+            </div>
+            <div className={styles.gradientColorGrid}>
+              {gradientColors.map((color, index) => (
+                <div className={styles.gradientColorItem} key={index}>
+                  <ColorSwatch
+                    label={`Color ${index + 1}`}
+                    value={color}
+                    onChange={(next) => {
+                      const nextColors = [...gradientColors];
+                      nextColors[index] = next;
+                      onBackgroundColorsChange(nextColors);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={styles.gradientRemoveButton}
+                    disabled={gradientColors.length <= MIN_GRADIENT_COLORS}
+                    onClick={() =>
+                      onBackgroundColorsChange(
+                        gradientColors.filter((_, colorIndex) => colorIndex !== index)
+                      )
+                    }
+                    title="Remove color"
+                  >
+                    <Icon name="close" size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className={paletteClassName}>
+            <ColorSwatch
+              label="Background"
+              value={palette.background}
+              onChange={(next) => onPaletteChange({ background: next })}
+            />
+            {showForegroundColor ? (
+              <ColorSwatch
+                label="Foreground"
+                value={palette.foreground}
+                onChange={(next) => onPaletteChange({ foreground: next })}
+              />
+            ) : null}
+            {showAccentColor ? (
+              <ColorSwatch
+                label="Accent"
+                value={palette.accent}
+                onChange={(next) => onPaletteChange({ accent: next })}
+              />
+            ) : null}
+          </div>
+        )}
+      </Section>
+
+      <Section icon="sliders" title="Frame" defaultOpen>
+        <div className={styles.frameGroupLabel}>Material</div>
+        <IconChoiceGrid
+          activeValue={activeFrameBoxStyle}
+          values={FRAME_BOX_STYLE_IDS}
+          labels={BOX_STYLE_LABELS}
+          onChange={onFrameBoxStyleChange}
+        />
+        {isGlassMaterial ? (
+          <Slider
+            label="Transparency"
+            min={0}
+            max={1}
+            step={0.01}
+            value={card.frame.boxOpacity ?? CSS_GLASS_FRAME_DEFAULTS.boxOpacity}
+            format={formatPercent}
+            onChange={(boxOpacity) => onFrameMaterialChange({ boxOpacity })}
+          />
+        ) : null}
+        {isGlassMaterial ? (
+          <Slider
+            label="Blur"
+            min={0}
+            max={5}
+            step={0.1}
+            value={card.frame.glassBlur ?? CSS_GLASS_FRAME_DEFAULTS.glassBlur}
+            format={formatFractionalPx}
+            onChange={(glassBlur) => onFrameMaterialChange({ glassBlur })}
+          />
+        ) : null}
+        {activeFrameBoxStyle === 'solid' || isGlassMaterial ? (
+          <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
+            <ColorSwatch
+              label={frameColorLabel}
+              value={card.frame.boxColor ?? defaultBoxColor(activeFrameBoxStyle, palette)}
+              onChange={(next) => onFrameMaterialChange({ boxColor: next })}
+            />
+          </div>
+        ) : null}
+        {isGlassMaterial ? (
+          <Slider
+            label="Outline"
+            min={0}
+            max={1}
+            step={0.01}
+            value={
+              card.frame.glassOutlineOpacity ??
+              CSS_GLASS_FRAME_DEFAULTS.glassOutlineOpacity
+            }
+            format={formatPercent}
+            onChange={(glassOutlineOpacity) =>
+              onFrameMaterialChange({ glassOutlineOpacity })
+            }
+          />
+        ) : null}
+        <div className={styles.frameGroupLabel}>Chrome</div>
+        <IconChoiceGrid
+          activeValue={activeFrameChromePreset}
+          values={FRAME_CHROME_PRESET_IDS}
+          labels={CHROME_LABELS}
+          onChange={onFramePresetChange}
+        />
+        {activeFrameChromePreset !== 'none' ? (
+          <label className={styles.textField}>
+            <span>Bar text</span>
+            <input
+              value={card.frame.chromeText ?? ''}
+              placeholder="Auto from card name"
+              onChange={(event) =>
+                onFrameChromeTextChange(event.currentTarget.value || undefined)
+              }
+            />
+          </label>
+        ) : null}
+        <div className={styles.frameGroupLabel}>Layout</div>
+        <Slider
+          label="Canvas inset"
+          min={0}
+          max={240}
+          step={4}
+          value={card.frame.padding}
+          format={formatPx}
+          onChange={onPaddingChange}
+        />
+        {activeFrameBoxStyle !== 'none' ? (
+          <Slider
+            label={frameInsetLabel}
+            min={0}
+            max={120}
+            step={2}
+            value={card.frame.contentPadding ?? 0}
+            format={formatPx}
+            onChange={onFrameContentPaddingChange}
+          />
+        ) : null}
+        <Slider
+          label="Corner radius"
+          min={0}
+          max={52}
+          step={2}
+          value={card.frame.cornerRadius}
+          format={formatPx}
+          onChange={onRadiusChange}
+        />
+        <div className={styles.frameGroupLabel}>Shadow</div>
+        <Slider
+          label="Strength"
+          min={0}
+          max={4}
+          step={0.02}
+          value={shadowSettings.strength}
+          format={formatPercent}
+          onChange={(shadowStrength) => updateShadowSettings({ shadowStrength })}
+        />
+        <Slider
+          label="Softness"
+          min={0}
+          max={4}
+          step={0.02}
+          value={shadowSettings.softness}
+          format={formatPercent}
+          onChange={(shadowSoftness) => updateShadowSettings({ shadowSoftness })}
+        />
+        <Slider
+          label="Drop distance"
+          min={0}
+          max={4}
+          step={0.02}
+          value={shadowSettings.distance}
+          format={formatPercent}
+          onChange={(shadowDistance) => updateShadowSettings({ shadowDistance })}
+        />
+        <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
+          <ColorSwatch
+            label="Color"
+            value={shadowSettings.color}
+            onChange={(shadowColor) => updateShadowSettings({ shadowColor })}
+          />
+        </div>
+      </Section>
+
       <Section icon="split" title="Canvas size">
         {activeTarget ? (
           <>
@@ -561,226 +892,6 @@ export function InspectorPanel({
         ) : null}
       </Section>
 
-      <Section icon="grain" title="Background">
-        <div className={styles.stylesList}>
-          {BACKGROUND_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={
-                preset.id === activeBackgroundPresetId
-                  ? `${styles.styleButton} ${styles.styleButtonActive}`
-                  : styles.styleButton
-              }
-              onClick={() => onBackgroundPresetChange(preset.id)}
-            >
-              <span className={styles.styleLabel}>{preset.label}</span>
-              <span className={styles.styleHint}>{preset.hint}</span>
-            </button>
-          ))}
-        </div>
-        {activeBackgroundPreset.params.length > 0 ? (
-          <div className={styles.parameterStack}>
-            {activeBackgroundPreset.params.map((param) => (
-              <Slider
-                key={param.id}
-                label={param.label}
-                min={param.min}
-                max={param.max}
-                step={param.step}
-                value={card.background.params?.[param.id] ?? param.defaultValue}
-                format={(v) => `${Math.round(v * 100)}%`}
-                onChange={(value) => onBackgroundParamChange(param.id, value)}
-              />
-            ))}
-          </div>
-        ) : null}
-        {showRandomize ? (
-          <div className={styles.backgroundActions}>
-            <button
-              type="button"
-              className={styles.randomizeButton}
-              onClick={onBackgroundRandomize}
-              title="Randomize background layout"
-            >
-              <Icon name="reset" size={13} />
-              <span>Randomize</span>
-            </button>
-          </div>
-        ) : null}
-        <div className={paletteClassName}>
-          <ColorField
-            label="Background"
-            value={palette.background}
-            onChange={(next) => onPaletteChange({ background: next })}
-          />
-          {showForegroundColor ? (
-            <ColorField
-              label="Foreground"
-              value={palette.foreground}
-              onChange={(next) => onPaletteChange({ foreground: next })}
-            />
-          ) : null}
-          {showAccentColor ? (
-            <ColorField
-              label="Accent"
-              value={palette.accent}
-              onChange={(next) => onPaletteChange({ accent: next })}
-            />
-          ) : null}
-        </div>
-      </Section>
-
-      <Section icon="sliders" title="Frame">
-        <div className={styles.frameGroupLabel}>Material</div>
-        <div className={styles.frameList}>
-          {FRAME_BOX_STYLE_IDS.map((style) => {
-            const meta = BOX_STYLE_LABELS[style];
-            return (
-              <button
-                key={style}
-                type="button"
-                className={
-                  style === activeFrameBoxStyle
-                    ? `${styles.frameButton} ${styles.frameButtonActive}`
-                    : styles.frameButton
-                }
-                onClick={() => onFrameBoxStyleChange(style)}
-              >
-                <Icon name={meta.icon} size={13} />
-                <span>{meta.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        {activeFrameBoxStyle !== 'none' ? (
-          <div className={`${styles.paletteRow} ${styles.paletteRowCompact}`}>
-            <ColorField
-              label={frameColorLabels.tint}
-              value={card.frame.boxColor ?? defaultBoxColor(activeFrameBoxStyle, palette)}
-              onChange={(next) => onFrameMaterialChange({ boxColor: next })}
-            />
-            <ColorField
-              label={frameColorLabels.edge}
-              value={
-                card.frame.boxBorderColor ??
-                defaultBoxBorderColor(activeFrameBoxStyle, palette)
-              }
-              onChange={(next) => onFrameMaterialChange({ boxBorderColor: next })}
-            />
-          </div>
-        ) : null}
-        {activeFrameBoxStyle === 'glass-panel' ? (
-          <Slider
-            label="Glass opacity"
-            min={0}
-            max={2}
-            step={0.02}
-            value={card.frame.boxOpacity ?? 1}
-            format={(v) => `${Math.round(v * 100)}%`}
-            onChange={(boxOpacity) => onFrameMaterialChange({ boxOpacity })}
-          />
-        ) : null}
-        <div className={styles.frameGroupLabel}>Chrome</div>
-        <div className={styles.frameList}>
-          {FRAME_CHROME_PRESET_IDS.map((preset) => {
-            const meta = CHROME_LABELS[preset];
-            return (
-              <button
-                key={preset}
-                type="button"
-                className={
-                  preset === activeFrameChromePreset
-                    ? `${styles.frameButton} ${styles.frameButtonActive}`
-                    : styles.frameButton
-                }
-                onClick={() => onFramePresetChange(preset)}
-              >
-                <Icon name={meta.icon} size={13} />
-                <span>{meta.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        {activeFrameChromePreset !== 'none' ? (
-          <label className={styles.textField}>
-            <span>Bar text</span>
-            <input
-              value={card.frame.chromeText ?? ''}
-              placeholder="Auto from card name"
-              onChange={(event) =>
-                onFrameChromeTextChange(event.currentTarget.value || undefined)
-              }
-            />
-          </label>
-        ) : null}
-        <div className={styles.frameGroupLabel}>Layout</div>
-        <Slider
-          label="Canvas inset"
-          min={0}
-          max={240}
-          step={4}
-          value={card.frame.padding}
-          format={(v) => `${v}px`}
-          onChange={onPaddingChange}
-        />
-        {activeFrameBoxStyle !== 'none' ? (
-          <Slider
-            label={frameInsetLabel}
-            min={0}
-            max={120}
-            step={2}
-            value={card.frame.contentPadding ?? 0}
-            format={(v) => `${v}px`}
-            onChange={onFrameContentPaddingChange}
-          />
-        ) : null}
-        <Slider
-          label="Corner radius"
-          min={0}
-          max={52}
-          step={2}
-          value={card.frame.cornerRadius}
-          format={(v) => `${v}px`}
-          onChange={onRadiusChange}
-        />
-        <div className={styles.frameGroupLabel}>Shadow</div>
-        <Slider
-          label="Strength"
-          min={0}
-          max={2}
-          step={0.02}
-          value={shadowSettings.strength}
-          format={(v) => `${Math.round(v * 100)}%`}
-          onChange={(shadowStrength) => updateShadowSettings({ shadowStrength })}
-        />
-        <Slider
-          label="Softness"
-          min={0}
-          max={2.5}
-          step={0.02}
-          value={shadowSettings.softness}
-          format={(v) => `${Math.round(v * 100)}%`}
-          onChange={(shadowSoftness) => updateShadowSettings({ shadowSoftness })}
-        />
-        <Slider
-          label="Drop distance"
-          min={0}
-          max={2}
-          step={0.02}
-          value={shadowSettings.distance}
-          format={(v) => `${Math.round(v * 100)}%`}
-          onChange={(shadowDistance) => updateShadowSettings({ shadowDistance })}
-        />
-        <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
-          <ColorField
-            label="Color"
-            value={shadowSettings.color}
-            onChange={(shadowColor) => updateShadowSettings({ shadowColor })}
-          />
-        </div>
-      </Section>
-
       <Section icon="wand" title="Text">
         <Segmented
           value={card.text.placement}
@@ -823,7 +934,10 @@ export function InspectorPanel({
                   value={card.text.titleFont}
                   onChange={(event) =>
                     onTextChange({
-                      titleFont: event.currentTarget.value as GlyphrameTextFont
+                      titleFont: resolveTextFontValue(
+                        event.currentTarget.value,
+                        card.text.titleFont
+                      )
                     })
                   }
                 >
@@ -834,7 +948,7 @@ export function InspectorPanel({
                   ))}
                 </select>
               </label>
-              <ColorField
+              <ColorSwatch
                 label="Title color"
                 value={card.text.titleColor ?? palette.foreground}
                 onChange={(titleColor) => onTextChange({ titleColor })}
@@ -849,7 +963,10 @@ export function InspectorPanel({
                   value={card.text.subtitleFont}
                   onChange={(event) =>
                     onTextChange({
-                      subtitleFont: event.currentTarget.value as GlyphrameTextFont
+                      subtitleFont: resolveTextFontValue(
+                        event.currentTarget.value,
+                        card.text.subtitleFont
+                      )
                     })
                   }
                 >
@@ -860,7 +977,7 @@ export function InspectorPanel({
                   ))}
                 </select>
               </label>
-              <ColorField
+              <ColorSwatch
                 label="Paragraph color"
                 value={card.text.subtitleColor ?? palette.muted ?? palette.foreground}
                 onChange={(subtitleColor) => onTextChange({ subtitleColor })}
@@ -874,7 +991,7 @@ export function InspectorPanel({
               max={1.8}
               step={0.02}
               value={card.text.scale}
-              format={(v) => `${v.toFixed(2)}×`}
+              format={formatPreciseMultiplier}
               onChange={(scale) => onTextChange({ scale })}
             />
             <Slider
@@ -883,7 +1000,7 @@ export function InspectorPanel({
               max={textWidthMax}
               step={0.02}
               value={Math.max(textWidthMin, Math.min(card.text.width, textWidthMax))}
-              format={(v) => `${Math.round(v * 100)}%`}
+              format={formatPercent}
               onChange={(width) => onTextChange({ width })}
             />
             <Slider
@@ -892,7 +1009,7 @@ export function InspectorPanel({
               max={180}
               step={4}
               value={card.text.gap}
-              format={(v) => `${v}px`}
+              format={formatPx}
               onChange={(gap) => onTextChange({ gap })}
             />
           </>
@@ -911,7 +1028,7 @@ export function InspectorPanel({
           max={5}
           step={1}
           value={card.export.scale}
-          format={(v) => `${v}×`}
+          format={formatMultiplier}
           onChange={onExportScaleChange}
         />
         {activeTarget ? (
@@ -929,7 +1046,7 @@ export function InspectorPanel({
             max={1}
             step={0.02}
             value={card.export.quality ?? 0.92}
-            format={(v) => `${Math.round(v * 100)}%`}
+            format={formatPercent}
             onChange={onExportQualityChange}
           />
         ) : null}
