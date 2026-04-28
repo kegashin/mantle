@@ -233,8 +233,44 @@ describe('MantleProjectSchema', () => {
     ).toThrow();
   });
 
-  it('rejects unsupported background presets and image-background fields', () => {
+  it('accepts image backgrounds when they point to an asset', () => {
+    const backgroundAsset = {
+      id: 'asset-background',
+      role: 'background',
+      name: 'background.png',
+      mimeType: 'image/png',
+      width: 1600,
+      height: 900
+    } as const;
+    const project = createMantleProject();
+    const card = project.cards[0]!;
+    const { colors: _defaultColors, ...backgroundBase } = card.background;
+
+    const parsed = MantleProjectSchema.parse({
+      ...project,
+      assets: [backgroundAsset],
+      cards: [
+        {
+          ...card,
+          background: {
+            ...backgroundBase,
+            family: 'image',
+            presetId: 'image-fill',
+            seed: 'background-image',
+            intensity: 1,
+            params: {},
+            imageAssetId: backgroundAsset.id
+          }
+        }
+      ]
+    });
+
+    expect(parsed.cards[0]?.background.imageAssetId).toBe(backgroundAsset.id);
+  });
+
+  it('rejects unsupported background presets and invalid image-background fields', () => {
     const card = createMantleCard();
+    const { colors: _defaultColors, ...backgroundBase } = card.background;
 
     expect(() =>
       MantleCardSchema.parse({
@@ -250,7 +286,7 @@ describe('MantleProjectSchema', () => {
       MantleCardSchema.parse({
         ...card,
         background: {
-          ...card.background,
+          ...backgroundBase,
           family: 'image',
           presetId: 'solid-color'
         }
@@ -266,6 +302,20 @@ describe('MantleProjectSchema', () => {
         }
       })
     ).toThrow();
+
+    expect(() =>
+      MantleCardSchema.parse({
+        ...card,
+        background: {
+          ...backgroundBase,
+          family: 'image',
+          presetId: 'image-fill',
+          seed: 'missing-image',
+          intensity: 1,
+          params: {}
+        }
+      })
+    ).toThrow(/imageAssetId/);
   });
 
   it('rejects background family and parameter mismatches', () => {
@@ -509,6 +559,7 @@ describe('MantleProjectSchema', () => {
 
   it('rejects projects with broken card references', () => {
     const project = createMantleProject();
+    const { colors: _defaultColors, ...backgroundBase } = project.cards[0]!.background;
     const card = createMantleCard({
       id: 'broken-card',
       targetId: 'missing-target',
@@ -522,11 +573,20 @@ describe('MantleProjectSchema', () => {
         cards: [
           {
             ...card,
-            themeId: 'missing-theme'
+            themeId: 'missing-theme',
+            background: {
+              ...backgroundBase,
+              family: 'image',
+              presetId: 'image-fill',
+              seed: 'missing-background',
+              intensity: 1,
+              params: {},
+              imageAssetId: 'missing-background-asset'
+            }
           }
         ]
       })
-    ).toThrow(/targetId|themeId|sourceAssetId/);
+    ).toThrow(/targetId|themeId|sourceAssetId|imageAssetId/);
   });
 
   it('rejects duplicate project entity ids', () => {

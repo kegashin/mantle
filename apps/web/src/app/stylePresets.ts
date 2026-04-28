@@ -30,10 +30,16 @@ type StyleGroup = {
   presetIds: string[];
 };
 
+export const IMAGE_BACKGROUND_STYLE_ID = 'image-background';
+
 export const STYLE_GROUPS: StyleGroup[] = [
   {
     label: 'Quiet',
     presetIds: ['default-solid', 'dot-grid']
+  },
+  {
+    label: 'Media',
+    presetIds: [IMAGE_BACKGROUND_STYLE_ID]
   },
   {
     label: 'Gradient',
@@ -521,7 +527,8 @@ export function createBackgroundForPreset(
     family: MANTLE_BACKGROUND_PRESET_FAMILY[presetId],
     presetId,
     params: getBackgroundPresetDefaultParams(presetId),
-    colors: undefined
+    colors: undefined,
+    imageAssetId: undefined
   };
 
   if (

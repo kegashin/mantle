@@ -41,6 +41,7 @@ import {
   revokeRuntimeObjectUrl
 } from './runtimeAssets';
 import {
+  IMAGE_BACKGROUND_STYLE_ID,
   STYLE_GROUPS,
   STYLE_PRESETS,
   cloneBackground,
@@ -84,10 +85,21 @@ type AppFailure = Readonly<{
   message: string;
 }>;
 
-type SourceImportIntent =
+type StyleRailItem =
+  | (StylePreset & { kind: 'preset' })
+  | {
+      id: typeof IMAGE_BACKGROUND_STYLE_ID;
+      label: string;
+      hint: string;
+      kind: 'image';
+    };
+
+type ImageImportIntent =
   | { mode: 'auto' }
-  | { mode: 'new' }
-  | { mode: 'relink'; assetId: string };
+  | { mode: 'source-new' }
+  | { mode: 'source-relink'; assetId: string }
+  | { mode: 'background-new' }
+  | { mode: 'background-relink'; assetId: string };
 
 function isAppFailure(error: unknown): error is AppFailure {
   return (
@@ -117,6 +129,13 @@ function isMissingRenderableSource(
   return Boolean(card.sourceAssetId) && !hasRenderableAssetSource(asset);
 }
 
+function isMissingRenderableBackground(
+  background: MantleBackground,
+  asset: RuntimeMantleProject['assets'][number] | undefined
+): boolean {
+  return Boolean(background.imageAssetId) && !hasRenderableAssetSource(asset);
+}
+
 function isSupportedSourceImage(file: File): boolean {
   const mimeType = file.type.toLowerCase();
   return (
@@ -144,11 +163,14 @@ function importFailureNotice(
   };
 }
 
-function relinkMissingAssetNotice(): Omit<AppNotice, 'id'> {
+function relinkMissingAssetNotice(kind: 'source' | 'background'): Omit<AppNotice, 'id'> {
   return {
     tone: 'warning',
-    title: 'Reimport source image',
-    detail: 'Saved projects keep image metadata only. Relink the local screenshot to render or export this card.'
+    title: kind === 'background' ? 'Reimport background image' : 'Reimport source image',
+    detail:
+      kind === 'background'
+        ? 'Saved projects keep image metadata only. Relink the local background image before exporting.'
+        : 'Saved projects keep image metadata only. Relink the local screenshot to render or export this card.'
   };
 }
 
@@ -199,6 +221,14 @@ function exportFailureNotice(
     };
   }
 
+  if (/could not load background image asset/i.test(detail)) {
+    return {
+      tone: 'warning',
+      title: 'Reimport background image',
+      detail: 'Saved projects keep image metadata only. Relink the local background image before exporting.'
+    };
+  }
+
   return {
     tone: 'error',
     title: 'Export failed',
@@ -220,7 +250,7 @@ export function App() {
   const projectInputRef = useRef<HTMLInputElement | null>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const noticeTimerRef = useRef<number | null>(null);
-  const sourceImportIntentRef = useRef<SourceImportIntent>({ mode: 'auto' });
+  const imageImportIntentRef = useRef<ImageImportIntent>({ mode: 'auto' });
 
   const clearNoticeTimer = useCallback(() => {
     if (noticeTimerRef.current == null) return;
@@ -293,41 +323,77 @@ export function App() {
         : undefined,
     [activeCard?.sourceAssetId, project.assets]
   );
+  const activeBackgroundAsset = useMemo(
+    () =>
+      activeCard?.background.imageAssetId
+        ? project.assets.find(
+            (asset) => asset.id === activeCard.background.imageAssetId
+          )
+        : undefined,
+    [activeCard?.background.imageAssetId, project.assets]
+  );
   const activeMissingSourceAssetId =
     activeCard?.sourceAssetId && !hasRenderableAssetSource(activeAsset)
       ? activeCard.sourceAssetId
       : undefined;
+  const activeMissingBackgroundAssetId =
+    activeCard?.background.imageAssetId &&
+    !hasRenderableAssetSource(activeBackgroundAsset)
+      ? activeCard.background.imageAssetId
+      : undefined;
   const activeSourceMissing = activeMissingSourceAssetId != null;
 
-  const openSourcePicker = useCallback((intent: SourceImportIntent = { mode: 'auto' }) => {
-    sourceImportIntentRef.current = intent;
+  const openImagePicker = useCallback((intent: ImageImportIntent = { mode: 'auto' }) => {
+    imageImportIntentRef.current = intent;
     fileInputRef.current?.click();
   }, []);
 
   const openRelinkSourcePicker = useCallback(() => {
     if (!activeMissingSourceAssetId) {
-      openSourcePicker({ mode: 'new' });
+      openImagePicker({ mode: 'source-new' });
       return;
     }
 
-    openSourcePicker({
-      mode: 'relink',
+    openImagePicker({
+      mode: 'source-relink',
       assetId: activeMissingSourceAssetId
     });
-  }, [activeMissingSourceAssetId, openSourcePicker]);
+  }, [activeMissingSourceAssetId, openImagePicker]);
 
-  const resolveSourceImportIntent = useCallback(
-    (intent: SourceImportIntent): SourceImportIntent => {
-      if (intent.mode === 'relink') return intent;
+  const openRelinkBackgroundPicker = useCallback(() => {
+    if (!activeMissingBackgroundAssetId) {
+      openImagePicker({ mode: 'background-new' });
+      return;
+    }
+
+    openImagePicker({
+      mode: 'background-relink',
+      assetId: activeMissingBackgroundAssetId
+    });
+  }, [activeMissingBackgroundAssetId, openImagePicker]);
+
+  const resolveImageImportIntent = useCallback(
+    (intent: ImageImportIntent): ImageImportIntent => {
+      if (intent.mode === 'source-relink' || intent.mode === 'background-relink') {
+        return intent;
+      }
       if (intent.mode === 'auto' && activeMissingSourceAssetId) {
         return {
-          mode: 'relink',
+          mode: 'source-relink',
           assetId: activeMissingSourceAssetId
         };
       }
-      return { mode: 'new' };
+      if (intent.mode === 'auto' && activeMissingBackgroundAssetId) {
+        return {
+          mode: 'background-relink',
+          assetId: activeMissingBackgroundAssetId
+        };
+      }
+      return intent.mode === 'background-new'
+        ? { mode: 'background-new' }
+        : { mode: 'source-new' };
     },
-    [activeMissingSourceAssetId]
+    [activeMissingBackgroundAssetId, activeMissingSourceAssetId]
   );
 
   const updateActiveCard = useCallback((patch: Partial<MantleCard>) => {
@@ -415,18 +481,21 @@ export function App() {
   );
 
   const importFile = useCallback(
-    async (file: File, intent: SourceImportIntent = { mode: 'auto' }) => {
+    async (file: File, intent: ImageImportIntent = { mode: 'auto' }) => {
       if (!isSupportedSourceImage(file)) {
         showNotice(importFailureNotice(file));
         return;
       }
 
       const objectUrl = registerObjectUrl(URL.createObjectURL(file));
-      const resolvedIntent = resolveSourceImportIntent(intent);
+      const resolvedIntent = resolveImageImportIntent(intent);
       try {
         const dimensions = await readImageDimensions(objectUrl);
 
-        if (resolvedIntent.mode === 'relink') {
+        if (
+          resolvedIntent.mode === 'source-relink' ||
+          resolvedIntent.mode === 'background-relink'
+        ) {
           const currentAsset = project.assets.find(
             (asset) => asset.id === resolvedIntent.assetId
           );
@@ -463,38 +532,69 @@ export function App() {
           }));
           showNotice({
             tone: 'success',
-            title: 'Image relinked',
-            detail: `${file.name} is attached to this card again.`
+            title:
+              resolvedIntent.mode === 'background-relink'
+                ? 'Background relinked'
+                : 'Image relinked',
+            detail:
+              resolvedIntent.mode === 'background-relink'
+                ? `${file.name} is attached as the background again.`
+                : `${file.name} is attached to this card again.`
           });
           return;
         }
 
-        const asset = createAssetFromFile(file, objectUrl, dimensions);
+        const asset = createAssetFromFile(
+          file,
+          objectUrl,
+          dimensions,
+          resolvedIntent.mode === 'background-new' ? 'background' : 'screenshot'
+        );
         setProject((current) => ({
           ...current,
           updatedAt: new Date().toISOString(),
           assets: [...current.assets, asset],
           cards: current.cards.map((item) =>
             item.id === current.activeCardId
-              ? {
-                  ...item,
-                  name: fileBaseName(file.name),
-                  sourceAssetId: asset.id
-                }
+              ? resolvedIntent.mode === 'background-new'
+                ? {
+                    ...item,
+                    background: {
+                      ...item.background,
+                      family: 'image',
+                      presetId: 'image-fill',
+                      seed: createBackgroundSeed('image-fill'),
+                      intensity: 1,
+                      params: {},
+                      colors: undefined,
+                      imageAssetId: asset.id
+                    }
+                  }
+                : {
+                    ...item,
+                    name: fileBaseName(file.name),
+                    sourceAssetId: asset.id
+                  }
               : item
           )
         }));
         showNotice({
           tone: 'success',
-          title: 'Image imported',
-          detail: `${file.name} is ready to render.`
+          title:
+            resolvedIntent.mode === 'background-new'
+              ? 'Background imported'
+              : 'Image imported',
+          detail:
+            resolvedIntent.mode === 'background-new'
+              ? `${file.name} is now the canvas background.`
+              : `${file.name} is ready to render.`
         });
       } catch (error) {
         revokeObjectUrl(objectUrl);
         showNotice(importFailureNotice(file, toAppFailure(error)));
       }
     },
-    [project.assets, registerObjectUrl, resolveSourceImportIntent, revokeObjectUrl, showNotice]
+    [project.assets, registerObjectUrl, resolveImageImportIntent, revokeObjectUrl, showNotice]
   );
 
   useEffect(() => {
@@ -570,8 +670,18 @@ export function App() {
       const activeAsset = activeCard?.sourceAssetId
         ? runtimeProject.assets.find((asset) => asset.id === activeCard.sourceAssetId)
         : undefined;
+      const activeBackgroundAsset = activeCard?.background.imageAssetId
+        ? runtimeProject.assets.find(
+            (asset) => asset.id === activeCard.background.imageAssetId
+          )
+        : undefined;
       if (activeCard?.sourceAssetId && !hasRenderableAssetSource(activeAsset)) {
-        showNotice(relinkMissingAssetNotice());
+        showNotice(relinkMissingAssetNotice('source'));
+      } else if (
+        activeCard?.background.imageAssetId &&
+        !hasRenderableAssetSource(activeBackgroundAsset)
+      ) {
+        showNotice(relinkMissingAssetNotice('background'));
       } else {
         showNotice({
           tone: 'success',
@@ -603,6 +713,15 @@ export function App() {
         tone: 'warning',
         title: 'Reimport source image',
         detail: 'Saved projects keep image metadata only. Relink the local screenshot before exporting.'
+      });
+      return;
+    }
+
+    if (isMissingRenderableBackground(activeCard.background, activeBackgroundAsset)) {
+      showNotice({
+        tone: 'warning',
+        title: 'Reimport background image',
+        detail: 'Saved projects keep image metadata only. Relink the local background image before exporting.'
       });
       return;
     }
@@ -668,6 +787,12 @@ export function App() {
     });
   };
 
+  const clearActiveBackgroundImage = () => {
+    updateActiveCard({
+      background: createBackgroundForPreset(activeCard.background, 'marbling')
+    });
+  };
+
   const updateActiveFrame = (patch: Partial<MantleFrame>) => {
     updateActiveCard({
       frame: { ...activeCard.frame, ...patch }
@@ -716,8 +841,8 @@ export function App() {
         type="file"
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
-          const intent = sourceImportIntentRef.current;
-          sourceImportIntentRef.current = { mode: 'auto' };
+          const intent = imageImportIntentRef.current;
+          imageImportIntentRef.current = { mode: 'auto' };
           if (file) void importFile(file, intent);
           event.currentTarget.value = '';
         }}
@@ -767,7 +892,7 @@ export function App() {
             <button
               type="button"
               className={styles.ghostButton}
-              onClick={() => openSourcePicker({ mode: 'new' })}
+              onClick={() => openImagePicker({ mode: 'source-new' })}
               title="Import source image"
             >
               <Icon name="image" size={14} aria-hidden="true" />
@@ -806,28 +931,49 @@ export function App() {
           </div>
           <div className={styles.presetList}>
             {STYLE_GROUPS.map((group) => {
-              const presets = group.presetIds
-                .map((id) => STYLE_PRESETS.find((preset) => preset.id === id))
-                .filter((preset): preset is StylePreset => preset !== undefined);
-              if (presets.length === 0) return null;
+              const items = group.presetIds
+                .map((id) => {
+                  if (id === IMAGE_BACKGROUND_STYLE_ID) {
+                    return {
+                      id,
+                      label: 'Image Background',
+                      hint: 'Use your own background image',
+                      kind: 'image' as const
+                    };
+                  }
+
+                  const preset = STYLE_PRESETS.find((item) => item.id === id);
+                  return preset ? { ...preset, kind: 'preset' as const } : undefined;
+                })
+                .filter((item): item is StyleRailItem => item !== undefined);
+              if (items.length === 0) return null;
 
               return (
                 <div key={group.label} className={styles.presetGroup}>
                   <div className={styles.presetGroupHeader}>
                     <span>{group.label}</span>
-                    <span className={styles.presetGroupCount}>{presets.length}</span>
+                    <span className={styles.presetGroupCount}>{items.length}</span>
                   </div>
                   <div className={styles.presetGroupGrid}>
-                    {presets.map((preset) => (
+                    {items.map((preset) => (
                       <button
                         key={preset.id}
                         type="button"
                         className={
-                          preset.id === activeCard.themeId
+                          (preset.kind === 'image'
+                            ? activeCard.background.presetId === 'image-fill'
+                            : preset.id === activeCard.themeId)
                             ? `${styles.presetCard} ${styles.presetCardActive}`
                             : styles.presetCard
                         }
-                        onClick={() => applyStylePreset(preset)}
+                        onClick={() => {
+                          if (preset.kind === 'image') {
+                            openImagePicker({ mode: 'background-new' });
+                            return;
+                          }
+
+                          applyStylePreset(preset);
+                        }}
                       >
                         <span className={styles.presetLabel}>
                           <span className={styles.presetName}>{preset.label}</span>
@@ -892,13 +1038,15 @@ export function App() {
             card={activeCard}
             target={activeTarget}
             asset={activeAsset}
-            onChooseSource={() => openSourcePicker({ mode: 'new' })}
+            backgroundAsset={activeBackgroundAsset}
+            onChooseSource={() => openImagePicker({ mode: 'source-new' })}
             onRelinkSource={openRelinkSourcePicker}
           />
         </section>
 
         <InspectorPanel
           card={activeCard}
+          backgroundAsset={activeBackgroundAsset}
           targets={project.targets}
           onSurfaceSizeChange={updateActiveSurfaceSize}
           onSurfaceAspectRatioChange={updateActiveSurfaceAspectRatio}
@@ -923,6 +1071,9 @@ export function App() {
               syncGradientColorsWithPalette(activeCard.background, colors)
             )
           }
+          onBackgroundImageChoose={() => openImagePicker({ mode: 'background-new' })}
+          onBackgroundImageRelink={openRelinkBackgroundPicker}
+          onBackgroundImageClear={clearActiveBackgroundImage}
           onPaletteChange={(patch) =>
             updateActiveBackground({
               palette: {

@@ -8,6 +8,7 @@ export type PreviewRenderRequestPayload = {
   card: MantleCard;
   target: MantleSurfaceTarget;
   asset?: MantleRenderableAsset | undefined;
+  backgroundAsset?: MantleRenderableAsset | undefined;
   scale: number;
   showEmptyPlaceholderText: boolean;
 };

@@ -24,6 +24,41 @@ test('loads a local image into the active Mantle card', async ({ page }, testInf
   await expect(page.getByText(/1 × 1/).first()).toBeVisible();
 });
 
+test('uses a local image as the canvas background', async ({ page }, testInfo) => {
+  const backgroundPath = testInfo.outputPath('background.png');
+  await writeFile(backgroundPath, Buffer.from(SAMPLE_PNG_BASE64, 'base64'));
+
+  await page.goto('/');
+  await page.getByRole('button', { name: /Image Background/i }).click();
+  await page.getByTestId('source-file-input').setInputFiles(backgroundPath);
+
+  await expect(page.getByText('Background imported')).toBeVisible();
+  await expect(page.getByText('background.png', { exact: true })).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+
+  const rawProject = await readFile(downloadPath!, 'utf8');
+  const rawSavedProject: unknown = JSON.parse(rawProject);
+  const savedProject = MantleProjectSchema.parse(rawSavedProject);
+
+  expect(savedProject.assets[0]).toMatchObject({
+    role: 'background',
+    name: 'background.png',
+    width: 1,
+    height: 1
+  });
+  expect(savedProject.cards[0]?.background).toMatchObject({
+    family: 'image',
+    presetId: 'image-fill',
+    imageAssetId: savedProject.assets[0]?.id
+  });
+  expect(JSON.stringify(savedProject)).not.toContain('data:image');
+});
+
 test('saves project metadata without embedded image data', async ({ page }, testInfo) => {
   const sourcePath = testInfo.outputPath('sample-save.png');
   await writeFile(sourcePath, Buffer.from(SAMPLE_PNG_BASE64, 'base64'));

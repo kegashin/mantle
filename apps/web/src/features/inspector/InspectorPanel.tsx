@@ -12,6 +12,7 @@ import type {
   MantleExportFormat,
   MantleFrameBoxStyle,
   MantleFramePreset,
+  MantleRenderableAsset,
   MantlePalette,
   MantleTextFont,
   MantleTextPlacement,
@@ -40,6 +41,7 @@ import styles from './InspectorPanel.module.css';
 
 type InspectorPanelProps = {
   card: MantleCard;
+  backgroundAsset?: MantleRenderableAsset | undefined;
   targets: MantleSurfaceTarget[];
   onSurfaceSizeChange: (
     patch: Partial<Pick<MantleSurfaceTarget, 'width' | 'height'>>,
@@ -58,6 +60,9 @@ type InspectorPanelProps = {
   onBackgroundColorsReset: () => void;
   onBackgroundParamChange: (paramId: MantleBackgroundParamId, value: number) => void;
   onBackgroundColorsChange: (colors: string[]) => void;
+  onBackgroundImageChoose: () => void;
+  onBackgroundImageRelink: () => void;
+  onBackgroundImageClear: () => void;
   onPaletteChange: (patch: Partial<MantlePalette>) => void;
   onFramePresetChange: (preset: MantleFramePreset) => void;
   onFrameBoxStyleChange: (style: MantleFrameBoxStyle) => void;
@@ -431,6 +436,7 @@ function getSimplifiedRatioParts(target: MantleSurfaceTarget | undefined): {
 
 export function InspectorPanel({
   card,
+  backgroundAsset,
   targets,
   onSurfaceSizeChange,
   onSurfaceAspectRatioChange,
@@ -438,6 +444,9 @@ export function InspectorPanel({
   onBackgroundColorsReset,
   onBackgroundParamChange,
   onBackgroundColorsChange,
+  onBackgroundImageChoose,
+  onBackgroundImageRelink,
+  onBackgroundImageClear,
   onPaletteChange,
   onFramePresetChange,
   onFrameBoxStyleChange,
@@ -484,6 +493,9 @@ export function InspectorPanel({
   const activeBackgroundPreset = resolveBackgroundPresetDescriptor(
     activeBackgroundPresetId
   );
+  const isImageBackground = activeBackgroundPresetId === 'image-fill';
+  const isImageBackgroundMissing =
+    isImageBackground && Boolean(card.background.imageAssetId) && !backgroundAsset?.objectUrl;
   const gradientColors = useMemo(
     () => getGradientColorsFromBackground(card.background),
     [card.background]
@@ -514,11 +526,12 @@ export function InspectorPanel({
     activeFrameChromePreset === 'none' ? 'Content inset' : 'Chrome gap';
   const usesColorList = isColorListBackgroundPreset(activeBackgroundPresetId);
   const showAccentColor =
-    usesColorList ||
-    (activeBackgroundPresetId !== 'dot-grid' &&
-      activeBackgroundPresetId !== 'solid-color');
+    (usesColorList ||
+      (activeBackgroundPresetId !== 'dot-grid' &&
+        activeBackgroundPresetId !== 'solid-color')) &&
+    !isImageBackground;
   const showForegroundColor =
-    activeBackgroundPresetId !== 'solid-color' && !usesColorList;
+    activeBackgroundPresetId !== 'solid-color' && !usesColorList && !isImageBackground;
   const showRandomize =
     usesColorList ||
     activeBackgroundPresetId === 'symbol-wave' ||
@@ -556,6 +569,60 @@ export function InspectorPanel({
           <span className={styles.identityLabel}>{activeBackgroundPreset.label}</span>
           <span className={styles.identityHint}>{activeBackgroundPreset.hint}</span>
         </div>
+        {isImageBackground ? (
+          <div
+            className={
+              isImageBackgroundMissing
+                ? `${styles.backgroundImagePanel} ${styles.backgroundImagePanelMissing}`
+                : styles.backgroundImagePanel
+            }
+          >
+            <div className={styles.backgroundImageMeta}>
+              <span className={styles.backgroundImageLabel}>Selected image</span>
+              <span className={styles.backgroundImageName}>
+                {backgroundAsset?.name ?? 'Saved background image'}
+              </span>
+              {backgroundAsset?.width && backgroundAsset.height ? (
+                <span className={styles.backgroundImageSize}>
+                  {backgroundAsset.width} × {backgroundAsset.height}
+                </span>
+              ) : null}
+              {isImageBackgroundMissing ? (
+                <span className={styles.backgroundImageWarning}>
+                  Project files store image metadata only. Relink the original file.
+                </span>
+              ) : null}
+            </div>
+            <div className={styles.backgroundImageActions}>
+              <button
+                type="button"
+                className={styles.actionButton}
+                onClick={
+                  isImageBackgroundMissing
+                    ? onBackgroundImageRelink
+                    : onBackgroundImageChoose
+                }
+                title={
+                  isImageBackgroundMissing
+                    ? 'Relink background image'
+                    : 'Replace background image'
+                }
+              >
+                <Icon name="image" size={13} aria-hidden="true" />
+                <span>{isImageBackgroundMissing ? 'Relink' : 'Replace'}</span>
+              </button>
+              <button
+                type="button"
+                className={styles.actionButton}
+                onClick={onBackgroundImageClear}
+                title="Remove background image"
+              >
+                <Icon name="close" size={13} aria-hidden="true" />
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
         {activeBackgroundPreset.params.length > 0 ? (
           <div className={styles.parameterStack}>
             {activeBackgroundPreset.params.map((param) => (
@@ -572,29 +639,31 @@ export function InspectorPanel({
             ))}
           </div>
         ) : null}
-        <div className={styles.backgroundActions}>
-          {showRandomize ? (
+        {!isImageBackground ? (
+          <div className={styles.backgroundActions}>
+            {showRandomize ? (
+              <button
+                type="button"
+                className={styles.actionButton}
+                onClick={onBackgroundRandomize}
+                title="Randomize background layout"
+              >
+                <Icon name="reset" size={13} aria-hidden="true" />
+                <span>Randomize</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.actionButton}
-              onClick={onBackgroundRandomize}
-              title="Randomize background layout"
+              onClick={onBackgroundColorsReset}
+              title="Reset background colors"
             >
               <Icon name="reset" size={13} aria-hidden="true" />
-              <span>Randomize</span>
+              <span>Reset colors</span>
             </button>
-          ) : null}
-          <button
-            type="button"
-            className={styles.actionButton}
-            onClick={onBackgroundColorsReset}
-            title="Reset background colors"
-          >
-            <Icon name="reset" size={13} aria-hidden="true" />
-            <span>Reset colors</span>
-          </button>
-        </div>
-        {usesColorList ? (
+          </div>
+        ) : null}
+        {isImageBackground ? null : usesColorList ? (
           <div className={styles.gradientColorPanel}>
             <div className={styles.gradientColorHeader}>
               <span>{colorListLabel}</span>

@@ -29,6 +29,7 @@ export type MantleResolvedCard = {
   card: MantleCard;
   target: MantleSurfaceTarget;
   asset?: MantleRenderableAsset | undefined;
+  backgroundAsset?: MantleRenderableAsset | undefined;
 };
 
 export type MantleRenderCardCommand = MantleCardSelection & {
@@ -96,16 +97,25 @@ export function resolveMantleProjectCard({
   const asset = card.sourceAssetId
     ? project.assets.find((item) => item.id === card.sourceAssetId)
     : undefined;
+  const backgroundAsset = card.background.imageAssetId
+    ? project.assets.find((item) => item.id === card.background.imageAssetId)
+    : undefined;
 
   if (card.sourceAssetId && !asset) {
     throw new Error(`Asset "${card.sourceAssetId}" does not exist in this Mantle project.`);
+  }
+  if (card.background.imageAssetId && !backgroundAsset) {
+    throw new Error(
+      `Background asset "${card.background.imageAssetId}" does not exist in this Mantle project.`
+    );
   }
 
   return {
     project,
     card,
     target,
-    asset
+    asset,
+    backgroundAsset
   };
 }
 
@@ -123,6 +133,7 @@ export async function renderMantleProjectCard({
     card: resolved.card,
     target: resolved.target,
     asset: resolved.asset,
+    backgroundAsset: resolved.backgroundAsset,
     scale,
     canvas,
     renderMode,
@@ -141,6 +152,7 @@ export async function exportMantleProjectCard({
     card: resolved.card,
     target: resolved.target,
     asset: resolved.asset,
+    backgroundAsset: resolved.backgroundAsset,
     scale
   });
 }

@@ -91,5 +91,13 @@ export const MantleProjectSchema = z.object({
         message: `Card sourceAssetId "${card.sourceAssetId}" does not point to an existing asset.`
       });
     }
+
+    if (card.background.imageAssetId && !assetIds.has(card.background.imageAssetId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cards', index, 'background', 'imageAssetId'],
+        message: `Card background imageAssetId "${card.background.imageAssetId}" does not point to an existing asset.`
+      });
+    }
   });
 });

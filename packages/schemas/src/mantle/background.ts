@@ -45,6 +45,7 @@ const MANTLE_BACKGROUND_PARAM_MAX: Record<
   Partial<Record<MantleBackgroundParamId, number>>
 > = {
   'solid-color': {},
+  'image-fill': {},
   'soft-gradient': {
     angle: 1,
     spread: 1,
@@ -108,7 +109,8 @@ export const MantleBackgroundSchema = z.object({
     .partialRecord(MantleBackgroundParamIdSchema, z.number().min(0).max(4))
     .optional(),
   palette: MantlePaletteSchema,
-  colors: z.array(MantleHexColorSchema).min(2).max(6).optional()
+  colors: z.array(MantleHexColorSchema).min(2).max(6).optional(),
+  imageAssetId: z.string().min(1).optional()
 }).strict().superRefine((background, ctx) => {
   const expectedFamily = MANTLE_BACKGROUND_PRESET_FAMILY[background.presetId];
   if (background.family !== expectedFamily) {
@@ -127,6 +129,22 @@ export const MantleBackgroundSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['colors'],
       message: `Background colors are only supported by color-list presets.`
+    });
+  }
+
+  if (background.presetId === 'image-fill' && !background.imageAssetId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['imageAssetId'],
+      message: `Background preset "image-fill" requires imageAssetId.`
+    });
+  }
+
+  if (background.presetId !== 'image-fill' && background.imageAssetId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['imageAssetId'],
+      message: `Background imageAssetId is only supported by "image-fill".`
     });
   }
 

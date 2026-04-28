@@ -30,6 +30,7 @@ type CardCanvasProps = {
   card: MantleCard;
   target: MantleSurfaceTarget;
   asset?: MantleRenderableAsset | undefined;
+  backgroundAsset?: MantleRenderableAsset | undefined;
   onChooseSource?: () => void;
   onRelinkSource?: () => void;
 };
@@ -236,6 +237,7 @@ export function CardCanvas({
   card,
   target,
   asset,
+  backgroundAsset,
   onChooseSource,
   onRelinkSource
 }: CardCanvasProps) {
@@ -298,6 +300,7 @@ export function CardCanvas({
           card,
           target,
           asset,
+          backgroundAsset,
           scale,
           showEmptyPlaceholderText: hasAssetSource
         };
@@ -391,7 +394,7 @@ export function CardCanvas({
       cancelAnimationFrame(rafId);
       resize.disconnect();
     };
-  }, [card, target, asset, hasAssetSource]);
+  }, [card, target, asset, backgroundAsset, hasAssetSource]);
 
   return (
     <div className={styles.wrap} ref={wrapRef}>

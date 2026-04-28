@@ -59,6 +59,7 @@ scope.onmessage = async (event) => {
       card: request.card,
       target: request.target,
       asset: request.asset,
+      backgroundAsset: request.backgroundAsset,
       canvas,
       renderMode: 'preview',
       scale: request.scale,

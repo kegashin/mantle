@@ -51,6 +51,13 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
     params: []
   },
   {
+    id: 'image-fill',
+    label: 'Image',
+    hint: 'Uploaded background image',
+    family: 'editorial',
+    params: []
+  },
+  {
     id: 'soft-gradient',
     label: 'Linear Gradient',
     hint: 'Directional gradient wash',
@@ -390,6 +397,7 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
 
 const REGISTRY: Record<BackgroundPresetId, BackgroundGenerator> = {
   'solid-color': solidColor,
+  'image-fill': solidColor,
   'soft-gradient': softGradient,
   'aurora-gradient': auroraGradient,
   'marbling': marbling,

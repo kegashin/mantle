@@ -29,7 +29,7 @@ import {
   getAssetSource,
   type MantleRenderableAsset
 } from './renderer/assets';
-import { withLoadedImage } from './renderer/imageCache';
+import { withLoadedImage, type LoadedMantleImage } from './renderer/imageCache';
 import {
   drawEmptyScreenshotPlaceholder,
   drawImageWithShadowedFrame
@@ -66,6 +66,7 @@ export type MantleRenderInput = {
   card: MantleCard;
   target: MantleSurfaceTarget;
   asset?: MantleRenderableAsset | undefined;
+  backgroundAsset?: MantleRenderableAsset | undefined;
   showEmptyPlaceholderText?: boolean | undefined;
   renderMode?: MantleRenderMode | undefined;
   /**
@@ -152,6 +153,36 @@ function ensureCanvas(input: MantleRenderInput, width: number, height: number): 
   return createCanvas(width, height);
 }
 
+function imageDimension(image: LoadedMantleImage, axis: 'width' | 'height'): number {
+  const value =
+    axis === 'width'
+      ? 'naturalWidth' in image
+        ? image.naturalWidth
+        : image.width
+      : 'naturalHeight' in image
+        ? image.naturalHeight
+        : image.height;
+  return typeof value === 'number' ? value : 0;
+}
+
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  image: LoadedMantleImage,
+  rect: Rect
+): void {
+  const sourceWidth = imageDimension(image, 'width');
+  const sourceHeight = imageDimension(image, 'height');
+  if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+  const scale = Math.max(rect.width / sourceWidth, rect.height / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  const drawX = rect.x + (rect.width - drawWidth) / 2;
+  const drawY = rect.y + (rect.height - drawHeight) / 2;
+
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
 export async function renderMantleCardToCanvas(
   input: MantleRenderInput
 ): Promise<MantleCanvas> {
@@ -188,6 +219,14 @@ export async function renderMantleCardToCanvas(
       renderMode: input.renderMode ?? 'export',
       scale: drawScale
     });
+
+    if (card.background.presetId === 'image-fill') {
+      const source = getAssetSource(input.backgroundAsset);
+      if (!source) throw new Error('Could not load background image asset.');
+      await withLoadedImage(source, (image) => {
+        drawCoverImage(ctx, image, canvasRect);
+      });
+    }
 
     const padding = Math.min(card.frame.padding * scale, width * 0.16, height * 0.22);
     const text = resolveCardText(card);

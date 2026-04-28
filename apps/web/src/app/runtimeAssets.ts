@@ -1,5 +1,8 @@
 import { clearMantleImageCache } from '@mantle/engine/render';
-import type { MantleRuntimeAsset as RuntimeMantleAsset } from '@mantle/schemas/model';
+import type {
+  MantleAssetRole,
+  MantleRuntimeAsset as RuntimeMantleAsset
+} from '@mantle/schemas/model';
 
 export function readImageDimensions(
   sourceUrl: string
@@ -27,11 +30,12 @@ function createAssetId(): string {
 export function createAssetFromFile(
   file: File,
   objectUrl: string,
-  dimensions: { width: number; height: number }
+  dimensions: { width: number; height: number },
+  role: MantleAssetRole = 'screenshot'
 ): RuntimeMantleAsset {
   return {
     id: createAssetId(),
-    role: 'screenshot',
+    role,
     name: file.name,
     mimeType: file.type || 'image/png',
     width: dimensions.width,

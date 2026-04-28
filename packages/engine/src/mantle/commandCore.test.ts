@@ -24,15 +24,37 @@ describe('Mantle command core', () => {
       height: 800,
       objectUrl: 'blob:mantle-test'
     } satisfies MantleCommandProject['assets'][number];
+    const backgroundAsset = {
+      id: 'asset-background',
+      role: 'background',
+      name: 'background.png',
+      width: 1600,
+      height: 900,
+      objectUrl: 'blob:mantle-background'
+    } satisfies MantleCommandProject['assets'][number];
     const card = createMantleCard({
       id: 'card-asset',
       sourceAssetId: asset.id
     });
+    const { colors: _defaultColors, ...backgroundBase } = card.background;
     const commandProject = {
       ...project,
       activeCardId: card.id,
-      assets: [asset],
-      cards: [card]
+      assets: [asset, backgroundAsset],
+      cards: [
+        {
+          ...card,
+          background: {
+            ...backgroundBase,
+            family: 'image',
+            presetId: 'image-fill',
+            seed: 'background-image',
+            intensity: 1,
+            params: {},
+            imageAssetId: backgroundAsset.id
+          }
+        }
+      ]
     } satisfies MantleCommandProject;
 
     const resolved = resolveMantleProjectCard({ project: commandProject });
@@ -41,6 +63,7 @@ describe('Mantle command core', () => {
     expect(resolved.card.id).toBe(card.id);
     expect(resolved.target.id).toBe(card.targetId);
     expect(resolved.asset?.objectUrl).toBe(asset.objectUrl);
+    expect(resolved.backgroundAsset?.objectUrl).toBe(backgroundAsset.objectUrl);
   });
 
   it('keeps persisted validation strict while command validation accepts runtime object URLs', () => {

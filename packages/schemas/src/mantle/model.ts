@@ -38,13 +38,15 @@ export const MANTLE_BACKGROUND_FAMILIES = [
   'solid',
   'gradient',
   'mesh',
-  'glyph-field'
+  'glyph-field',
+  'image'
 ] as const;
 export type MantleBackgroundFamily =
   (typeof MANTLE_BACKGROUND_FAMILIES)[number];
 
 export const MANTLE_BACKGROUND_PRESET_IDS = [
   'solid-color',
+  'image-fill',
   'soft-gradient',
   'aurora-gradient',
   'marbling',
@@ -92,6 +94,7 @@ export const MANTLE_BACKGROUND_PRESET_FAMILY: Record<
   MantleBackgroundFamily
 > = {
   'solid-color': 'solid',
+  'image-fill': 'image',
   'soft-gradient': 'gradient',
   'aurora-gradient': 'gradient',
   marbling: 'gradient',
@@ -119,6 +122,7 @@ export type MantleBackground = {
   params?: MantleBackgroundParams | undefined;
   palette: MantlePalette;
   colors?: MantleHexColor[] | undefined;
+  imageAssetId?: string | undefined;
 };
 
 export type MantleBrand = {
