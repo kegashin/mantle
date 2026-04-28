@@ -17,6 +17,7 @@ import type {
 
 const PREVIEW_MAX_PIXEL_COUNT = 16_000_000;
 const PREVIEW_WORKER_PIXEL_THRESHOLD = 900_000;
+const PREVIEW_MIN_RENDER_INTERVAL_MS = 1000 / 30;
 const HEAVY_PREVIEW_BACKGROUND_IDS = new Set([
   'symbol-wave',
   'aurora-gradient',
@@ -34,6 +35,14 @@ type CardCanvasProps = {
   backgroundAsset?: MantleRenderableAsset | undefined;
   onChooseSource?: () => void;
   onRelinkSource?: () => void;
+};
+
+type PreviewRenderState = {
+  card: MantleCard;
+  target: MantleSurfaceTarget;
+  asset?: MantleRenderableAsset | undefined;
+  backgroundAsset?: MantleRenderableAsset | undefined;
+  hasAssetSource: boolean;
 };
 
 type PreviewWorkerJob = {
@@ -248,9 +257,20 @@ export function CardCanvas({
   const previewWorkerRef = useRef<PreviewWorkerClient | null>(null);
   const previewRendererRef = useRef<MantlePreviewRenderer | null>(null);
   const renderSeqRef = useRef(0);
+  const lastPreviewRenderStartRef = useRef(0);
+  const latestRenderStateRef = useRef<PreviewRenderState | null>(null);
+  const schedulePreviewRenderRef = useRef<(() => void) | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const hasAssetSource = Boolean(asset?.objectUrl);
   const isMissingSource = Boolean(card.sourceAssetId && !hasAssetSource);
+
+  latestRenderStateRef.current = {
+    card,
+    target,
+    asset,
+    backgroundAsset,
+    hasAssetSource
+  };
 
   useEffect(() => {
     return () => {
@@ -268,141 +288,188 @@ export function CardCanvas({
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return undefined;
 
-    let cancelled = false;
+    let disposed = false;
     const seq = ++renderSeqRef.current;
     let rafId = 0;
+    let throttleId = 0;
+    let renderInFlight = false;
+    let renderQueued = false;
 
-    const schedule = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(async () => {
-        if (cancelled || seq !== renderSeqRef.current) return;
+    const drawBitmap = (bitmap: CanvasImageSource, width: number, height: number) => {
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
 
-        const style = window.getComputedStyle(wrap);
-        const padX =
-          Number.parseFloat(style.paddingLeft || '0') +
-          Number.parseFloat(style.paddingRight || '0');
-        const padY =
-          Number.parseFloat(style.paddingTop || '0') +
-          Number.parseFloat(style.paddingBottom || '0');
-        const availW = Math.max(0, wrap.clientWidth - padX);
-        const availH = Math.max(0, wrap.clientHeight - padY);
-        if (availW === 0 || availH === 0) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context is unavailable.');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bitmap, 0, 0);
+    };
 
-        const aspect = target.width / target.height;
-        let cssW = availW;
-        let cssH = availW / aspect;
-        if (cssH > availH) {
-          cssH = availH;
-          cssW = availH * aspect;
-        }
+    const render = async () => {
+      if (disposed || seq !== renderSeqRef.current) return;
 
-        canvas.style.width = `${cssW}px`;
-        canvas.style.height = `${cssH}px`;
+      renderInFlight = true;
+      renderQueued = false;
+      lastPreviewRenderStartRef.current = performance.now();
 
-        const scale = resolveStablePreviewScale(target);
-        const renderPayload: PreviewWorkerRequest = {
-          card,
-          target,
-          asset,
-          backgroundAsset,
-          scale,
-          showEmptyPlaceholderText: hasAssetSource
-        };
+      const state = latestRenderStateRef.current;
+      if (!state) {
+        renderInFlight = false;
+        return;
+      }
 
-        const drawBitmap = (bitmap: CanvasImageSource, width: number, height: number) => {
-          if (canvas.width !== width) canvas.width = width;
-          if (canvas.height !== height) canvas.height = height;
+      const style = window.getComputedStyle(wrap);
+      const padX =
+        Number.parseFloat(style.paddingLeft || '0') +
+        Number.parseFloat(style.paddingRight || '0');
+      const padY =
+        Number.parseFloat(style.paddingTop || '0') +
+        Number.parseFloat(style.paddingBottom || '0');
+      const availW = Math.max(0, wrap.clientWidth - padX);
+      const availH = Math.max(0, wrap.clientHeight - padY);
+      if (availW === 0 || availH === 0) {
+        renderInFlight = false;
+        return;
+      }
 
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('Canvas 2D context is unavailable.');
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(bitmap, 0, 0);
-        };
+      const aspect = state.target.width / state.target.height;
+      let cssW = availW;
+      let cssH = availW / aspect;
+      if (cssH > availH) {
+        cssH = availH;
+        cssW = availH * aspect;
+      }
 
-        try {
-          let renderedInWorker = false;
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
 
-          if (!shouldUsePreviewWorker(card, target, scale)) {
-            previewWorkerRef.current?.dispose();
-            previewWorkerRef.current = null;
-          } else {
-            previewRendererRef.current?.dispose();
-            previewRendererRef.current = null;
-            releasePreviewBufferCanvas(bufferCanvasRef.current);
-            bufferCanvasRef.current = null;
+      const scale = resolveStablePreviewScale(state.target);
+      const renderPayload: PreviewWorkerRequest = {
+        card: state.card,
+        target: state.target,
+        asset: state.asset,
+        backgroundAsset: state.backgroundAsset,
+        scale,
+        showEmptyPlaceholderText: state.hasAssetSource
+      };
 
-            const workerClient =
-              previewWorkerRef.current ?? createPreviewWorkerClient();
-            previewWorkerRef.current = workerClient;
+      try {
+        let renderedInWorker = false;
 
+        if (!shouldUsePreviewWorker(state.card, state.target, scale)) {
+          previewWorkerRef.current?.dispose();
+          previewWorkerRef.current = null;
+        } else {
+          previewRendererRef.current?.dispose();
+          previewRendererRef.current = null;
+          releasePreviewBufferCanvas(bufferCanvasRef.current);
+          bufferCanvasRef.current = null;
+
+          const workerClient =
+            previewWorkerRef.current ?? createPreviewWorkerClient();
+          previewWorkerRef.current = workerClient;
+
+          try {
+            const rendered = await workerClient.render(renderPayload);
             try {
-              const rendered = await workerClient.render(renderPayload);
-              try {
-                if (cancelled || seq !== renderSeqRef.current) {
-                  return;
-                }
-
-                drawBitmap(rendered.bitmap, rendered.width, rendered.height);
-                renderedInWorker = true;
-              } finally {
-                rendered.bitmap.close();
-              }
-            } catch (workerError) {
-              const previewError = toPreviewRenderFailure(workerError);
-              if (
-                isPreviewRenderCancelled(previewError) ||
-                cancelled ||
-                seq !== renderSeqRef.current
-              ) {
+              if (disposed || seq !== renderSeqRef.current) {
                 return;
               }
 
-              previewWorkerRef.current?.dispose();
-              previewWorkerRef.current = null;
-              if (isPreviewWorkerRenderError(previewError)) {
-                throw previewError;
-              }
+              drawBitmap(rendered.bitmap, rendered.width, rendered.height);
+              renderedInWorker = true;
+            } finally {
+              rendered.bitmap.close();
+            }
+          } catch (workerError) {
+            const previewError = toPreviewRenderFailure(workerError);
+            if (
+              isPreviewRenderCancelled(previewError) ||
+              disposed ||
+              seq !== renderSeqRef.current
+            ) {
+              return;
+            }
+
+            previewWorkerRef.current?.dispose();
+            previewWorkerRef.current = null;
+            if (isPreviewWorkerRenderError(previewError)) {
+              throw previewError;
             }
           }
-
-          if (!renderedInWorker) {
-            const bufferCanvas =
-              bufferCanvasRef.current ?? document.createElement('canvas');
-            bufferCanvasRef.current = bufferCanvas;
-            const previewRenderer =
-              previewRendererRef.current ?? createMantlePreviewRenderer();
-            previewRendererRef.current = previewRenderer;
-            const rendered = await previewRenderer.render({
-              ...renderPayload,
-              canvas: bufferCanvas,
-              renderMode: 'preview'
-            });
-            if (cancelled || seq !== renderSeqRef.current) return;
-
-            drawBitmap(rendered, rendered.width, rendered.height);
-          }
-
-          setRenderError(null);
-        } catch (error) {
-          if (cancelled || seq !== renderSeqRef.current) return;
-          setRenderError(toPreviewRenderFailure(error).message);
         }
-      });
+
+        if (!renderedInWorker) {
+          const bufferCanvas =
+            bufferCanvasRef.current ?? document.createElement('canvas');
+          bufferCanvasRef.current = bufferCanvas;
+          const previewRenderer =
+            previewRendererRef.current ?? createMantlePreviewRenderer();
+          previewRendererRef.current = previewRenderer;
+          const rendered = await previewRenderer.render({
+            ...renderPayload,
+            canvas: bufferCanvas,
+            renderMode: 'preview'
+          });
+          if (disposed || seq !== renderSeqRef.current) return;
+
+          drawBitmap(rendered, rendered.width, rendered.height);
+        }
+
+        setRenderError(null);
+      } catch (error) {
+        if (disposed || seq !== renderSeqRef.current) return;
+        setRenderError(toPreviewRenderFailure(error).message);
+      } finally {
+        renderInFlight = false;
+        if (renderQueued && !disposed && seq === renderSeqRef.current) {
+          schedulePreviewRenderRef.current?.();
+        }
+      }
+    };
+
+    const schedule = () => {
+      if (disposed) return;
+      renderQueued = true;
+      if (renderInFlight || rafId || throttleId) return;
+
+      const run = () => {
+        throttleId = 0;
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          void render();
+        });
+      };
+
+      const elapsed = performance.now() - lastPreviewRenderStartRef.current;
+      const delay = Math.max(0, PREVIEW_MIN_RENDER_INTERVAL_MS - elapsed);
+      if (delay <= 1) {
+        run();
+      } else {
+        throttleId = window.setTimeout(run, delay);
+      }
     };
 
     schedule();
 
     const resize = new ResizeObserver(schedule);
     resize.observe(wrap);
+    schedulePreviewRenderRef.current = schedule;
 
     return () => {
-      cancelled = true;
+      disposed = true;
       renderSeqRef.current += 1;
+      schedulePreviewRenderRef.current = null;
       cancelAnimationFrame(rafId);
+      window.clearTimeout(throttleId);
       resize.disconnect();
     };
+  }, []);
+
+  useEffect(() => {
+    schedulePreviewRenderRef.current?.();
   }, [card, target, asset, backgroundAsset, hasAssetSource]);
 
   return (
