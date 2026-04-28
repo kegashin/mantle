@@ -40,6 +40,7 @@ describe('MantleProjectSchema', () => {
       targetId: 'linkedin-feed',
       sourceAssetId: asset.id
     });
+    const { colors: _defaultColors, ...backgroundBase } = card.background;
 
     card.text = {
       placement: 'top',
@@ -53,7 +54,7 @@ describe('MantleProjectSchema', () => {
       gap: 64
     };
     card.background = {
-      ...card.background,
+      ...backgroundBase,
       family: 'mesh',
       presetId: 'contour-lines',
       seed: 'launch-card',
@@ -118,12 +119,20 @@ describe('MantleProjectSchema', () => {
     const firstCard = createMantleCard();
     const secondCard = createMantleCard();
 
-    firstCard.background.params!.scanlineDensity = 0.11;
+    firstCard.background.params!.complexity = 0.11;
     firstCard.background.palette.background = '#ffffff';
     firstCard.frame.padding = 12;
 
-    expect(secondCard.background.params?.scanlineDensity).toBe(0.72);
-    expect(secondCard.background.palette.background).toBe('#08080a');
+    expect(secondCard.background.params?.complexity).toBe(1);
+    expect(secondCard.background.colors).toEqual([
+      '#050505',
+      '#f5f5f5',
+      '#252525',
+      '#d8d8d8',
+      '#737373',
+      '#ffffff'
+    ]);
+    expect(secondCard.background.palette.background).toBe('#050505');
     expect(secondCard.frame.padding).toBe(96);
 
     const firstProject = createMantleProject();
@@ -132,7 +141,7 @@ describe('MantleProjectSchema', () => {
     firstProject.brand.palette.background = '#ffffff';
 
     expect(secondProject.targets[0]?.width).toBe(DEFAULT_MANTLE_TARGETS[0]?.width);
-    expect(secondProject.brand.palette.background).toBe('#08080a');
+    expect(secondProject.brand.palette.background).toBe('#050505');
   });
 
   it('rejects missing text objects and font ids instead of schema defaults', () => {
@@ -217,7 +226,7 @@ describe('MantleProjectSchema', () => {
         background: {
           ...card.background,
           params: {
-            scanlineDensity: 1.2
+            curve: 4.2
           }
         }
       })
@@ -289,11 +298,12 @@ describe('MantleProjectSchema', () => {
 
   it('accepts extended dot grid opacity values', () => {
     const card = createMantleCard();
+    const { colors: _defaultColors, ...backgroundBase } = card.background;
 
     const parsed = MantleCardSchema.parse({
       ...card,
       background: {
-        ...card.background,
+        ...backgroundBase,
         family: 'solid',
         presetId: 'dot-grid',
         params: {

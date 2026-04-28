@@ -46,9 +46,10 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByRole('button', { name: '9:16' })).toBeVisible();
   await expect(page.getByRole('button', { name: /LinkedIn feed/i })).toHaveCount(0);
 
-  await expect(page.getByText('Scanline strength', { exact: true })).toBeVisible();
-  await expect(page.getByText('Glyph amount', { exact: true })).toBeVisible();
-  await expect(page.getByText('Sweep glow', { exact: true })).toBeVisible();
+  await expect(page.getByText('Region count', { exact: true })).toBeVisible();
+  await expect(page.getByText('Edge sharpness', { exact: true })).toBeVisible();
+  await expect(page.getByText('Curve amount', { exact: true })).toBeVisible();
+  await expect(page.getByText('Grain', { exact: true })).toBeVisible();
   await expect(page.getByText('Canvas inset', { exact: true })).toBeVisible();
   await expect(page.getByText('Chrome gap', { exact: true })).toBeVisible();
   await expect(page.getByText('Frame padding', { exact: true })).toHaveCount(0);
@@ -68,7 +69,6 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByText('Transparency', { exact: true })).toBeVisible();
   await expect(page.getByText('Blur', { exact: true })).toBeVisible();
   await expect(page.getByText('Outline', { exact: true })).toBeVisible();
-  await expect(page.getByText('Grain', { exact: true })).toHaveCount(0);
   await page.getByRole('slider', { name: 'Transparency' }).fill('0.46');
   await expect(page.getByRole('slider', { name: 'Transparency' })).toHaveValue('0.46');
   await page.getByRole('slider', { name: 'Blur' }).fill('5');
@@ -83,8 +83,8 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByText('Render failed.', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'None', exact: true }).first().click();
   await expect(page.getByRole('slider', { name: 'Chrome gap' })).toHaveCount(0);
-  await page.getByRole('slider', { name: 'Glyph amount' }).fill('0');
-  await expect(page.getByRole('slider', { name: 'Glyph amount' })).toHaveValue('0');
+  await page.getByRole('slider', { name: 'Curve amount' }).fill('0');
+  await expect(page.getByRole('slider', { name: 'Curve amount' })).toHaveValue('0');
   await page.getByRole('button', { name: /Randomize/i }).click();
   await expect(page.getByText('Background randomized')).toHaveCount(0);
 

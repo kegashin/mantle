@@ -30,10 +30,10 @@ function deepFreeze<T extends DeepFreezable>(value: T): T {
 }
 
 export const DEFAULT_MANTLE_PALETTE: MantlePalette = deepFreeze({
-  background: '#08080a',
-  foreground: '#f4f1e8',
-  accent: '#9ad7c7',
-  muted: '#86827a'
+  background: '#050505',
+  foreground: '#f5f5f5',
+  accent: '#d8d8d8',
+  muted: '#737373'
 });
 
 export const DEFAULT_MANTLE_TEXT: MantleText = deepFreeze({
@@ -47,15 +47,17 @@ export const DEFAULT_MANTLE_TEXT: MantleText = deepFreeze({
 });
 
 export const DEFAULT_MANTLE_BACKGROUND: MantleBackground = deepFreeze({
-  family: 'glyph-field',
-  presetId: 'terminal-scanline',
-  seed: 'mantle-default',
-  intensity: 0.72,
+  family: 'gradient',
+  presetId: 'marbling',
+  seed: 'marbling',
+  intensity: 0.8,
   params: {
-    scanlineDensity: 0.72,
-    glyphDensity: 0.42,
-    sweepGlow: 0.68
+    complexity: 1,
+    sharpness: 1,
+    curve: 1,
+    grain: 0.05
   },
+  colors: ['#050505', '#f5f5f5', '#252525', '#d8d8d8', '#737373', '#ffffff'],
   palette: DEFAULT_MANTLE_PALETTE
 });
 
@@ -135,8 +137,8 @@ export const DEFAULT_MANTLE_TARGETS: MantleSurfaceTarget[] = deepFreeze([
 ]);
 
 export const DEFAULT_MANTLE_THEME: MantleTheme = deepFreeze({
-  id: 'terminal-scanline',
-  name: 'Terminal Scanline',
+  id: 'marbling',
+  name: 'Marbling',
   background: DEFAULT_MANTLE_BACKGROUND,
   frame: DEFAULT_MANTLE_FRAME,
   text: DEFAULT_MANTLE_TEXT
