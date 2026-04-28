@@ -1,4 +1,5 @@
-import { renderMantleCardToCanvas } from '@mantle/engine/render';
+import { createMantlePreviewRenderer } from '@mantle/engine/render';
+import type { MantlePreviewRenderer } from '@mantle/engine/render';
 import type {
   MantleCard,
   MantleRenderableAsset,
@@ -245,6 +246,7 @@ export function CardCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewWorkerRef = useRef<PreviewWorkerClient | null>(null);
+  const previewRendererRef = useRef<MantlePreviewRenderer | null>(null);
   const renderSeqRef = useRef(0);
   const [renderError, setRenderError] = useState<string | null>(null);
   const hasAssetSource = Boolean(asset?.objectUrl);
@@ -254,6 +256,8 @@ export function CardCanvas({
     return () => {
       previewWorkerRef.current?.dispose();
       previewWorkerRef.current = null;
+      previewRendererRef.current?.dispose();
+      previewRendererRef.current = null;
       releasePreviewBufferCanvas(bufferCanvasRef.current);
       bufferCanvasRef.current = null;
     };
@@ -324,6 +328,8 @@ export function CardCanvas({
             previewWorkerRef.current?.dispose();
             previewWorkerRef.current = null;
           } else {
+            previewRendererRef.current?.dispose();
+            previewRendererRef.current = null;
             releasePreviewBufferCanvas(bufferCanvasRef.current);
             bufferCanvasRef.current = null;
 
@@ -365,7 +371,10 @@ export function CardCanvas({
             const bufferCanvas =
               bufferCanvasRef.current ?? document.createElement('canvas');
             bufferCanvasRef.current = bufferCanvas;
-            const rendered = await renderMantleCardToCanvas({
+            const previewRenderer =
+              previewRendererRef.current ?? createMantlePreviewRenderer();
+            previewRendererRef.current = previewRenderer;
+            const rendered = await previewRenderer.render({
               ...renderPayload,
               canvas: bufferCanvas,
               renderMode: 'preview'

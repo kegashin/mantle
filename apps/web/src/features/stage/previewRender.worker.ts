@@ -1,5 +1,5 @@
 import {
-  renderMantleCardToCanvas,
+  createMantlePreviewRenderer,
   transferCanvasToImageBitmap
 } from '@mantle/engine/render';
 import type {
@@ -25,6 +25,7 @@ if (!isPreviewRenderWorkerScope(scope)) {
 }
 
 const canvas = new OffscreenCanvas(1, 1);
+const renderer = createMantlePreviewRenderer();
 
 type PreviewRenderWorkerFailure = Readonly<{
   message: string;
@@ -55,7 +56,7 @@ scope.onmessage = async (event) => {
   let bitmap: ImageBitmap | undefined;
 
   try {
-    await renderMantleCardToCanvas({
+    await renderer.render({
       card: request.card,
       target: request.target,
       asset: request.asset,
