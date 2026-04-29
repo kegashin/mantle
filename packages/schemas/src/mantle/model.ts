@@ -149,6 +149,37 @@ export type ExportResult = {
   mimeType: string;
 };
 
+export const MANTLE_SOURCE_PLACEMENT_MODES = ['fit', 'fill', 'crop'] as const;
+export type MantleSourcePlacementMode =
+  (typeof MANTLE_SOURCE_PLACEMENT_MODES)[number];
+
+export type MantleSourceCrop = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type MantleSourceFocus = {
+  x: number;
+  y: number;
+};
+
+export type MantleSourcePlacement = {
+  mode: MantleSourcePlacementMode;
+  crop?: MantleSourceCrop | undefined;
+  focus?: MantleSourceFocus | undefined;
+  zoom?: number | undefined;
+};
+
+export type MantleFrameTransform = {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+};
+
 export const MANTLE_FRAME_PRESETS = [
   'none',
   'minimal-browser',
@@ -306,6 +337,8 @@ export type MantleCard = {
   templateId: string;
   themeId: string;
   background: MantleBackground;
+  sourcePlacement?: MantleSourcePlacement | undefined;
+  frameTransform?: MantleFrameTransform | undefined;
   frame: MantleFrame;
   text: MantleText;
   export: MantleExportSettings;

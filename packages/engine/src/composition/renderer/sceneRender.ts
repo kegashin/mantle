@@ -12,6 +12,13 @@ import { withLoadedImage, type LoadedMantleImage } from './imageCache';
 import type { MantleSceneLayout } from './sceneLayout';
 import { drawTextBlock } from './text';
 
+export type MantleFrameSurfaceRender = {
+  contentRect: MantleSceneLayout['canvasRect'];
+  frameRect: MantleSceneLayout['canvasRect'];
+  baseFrameRect: MantleSceneLayout['canvasRect'];
+  frameRotation: number;
+};
+
 function imageDimension(
   image: LoadedMantleImage,
   axis: 'width' | 'height'
@@ -43,6 +50,26 @@ function drawCoverImage(
   const drawY = rect.y + (rect.height - drawHeight) / 2;
 
   ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
+function withFrameRotation<T>(
+  ctx: MantleCanvasRenderingContext2D,
+  layout: MantleSceneLayout,
+  draw: () => T
+): T {
+  if (layout.frameRotation === 0) return draw();
+
+  const centerX = layout.imageRect.x + layout.imageRect.width / 2;
+  const centerY = layout.imageRect.y + layout.imageRect.height / 2;
+  ctx.save();
+  try {
+    ctx.translate(centerX, centerY);
+    ctx.rotate((layout.frameRotation * Math.PI) / 180);
+    ctx.translate(-centerX, -centerY);
+    return draw();
+  } finally {
+    ctx.restore();
+  }
 }
 
 export async function drawMantleBackground({
@@ -97,35 +124,50 @@ export async function drawMantleFrameSurface({
   asset?: MantleRenderableAsset | undefined;
   layout: MantleSceneLayout;
   showEmptyPlaceholderText: boolean;
-}): Promise<void> {
+}): Promise<MantleFrameSurfaceRender> {
   const assetSource = getAssetSource(asset);
 
   if (assetSource) {
+    let contentRect: MantleFrameSurfaceRender['contentRect'] | undefined;
     await withLoadedImage(assetSource, (image) => {
-      drawImageWithShadowedFrame(
+      contentRect = withFrameRotation(ctx, layout, () =>
+        drawImageWithShadowedFrame(
+          ctx,
+          image,
+          layout.imageRect,
+          layout.cornerRadius,
+          layout.contentPadding,
+          card,
+          layout.palette,
+          layout.canvasRect.width
+        )
+      );
+    });
+    return {
+      contentRect: contentRect ?? layout.imageRect,
+      frameRect: layout.imageRect,
+      baseFrameRect: layout.baseImageRect,
+      frameRotation: layout.frameRotation
+    };
+  }
+
+  return {
+    contentRect: withFrameRotation(ctx, layout, () =>
+      drawEmptyScreenshotPlaceholder(
         ctx,
-        image,
         layout.imageRect,
         layout.cornerRadius,
         layout.contentPadding,
         card,
         layout.palette,
-        layout.canvasRect.width
-      );
-    });
-    return;
-  }
-
-  drawEmptyScreenshotPlaceholder(
-    ctx,
-    layout.imageRect,
-    layout.cornerRadius,
-    layout.contentPadding,
-    card,
-    layout.palette,
-    layout.canvasRect.width,
-    showEmptyPlaceholderText
-  );
+        layout.canvasRect.width,
+        showEmptyPlaceholderText
+      )
+    ),
+    frameRect: layout.imageRect,
+    baseFrameRect: layout.baseImageRect,
+    frameRotation: layout.frameRotation
+  };
 }
 
 export function drawMantleText({

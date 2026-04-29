@@ -54,9 +54,12 @@ function postFailure(
 scope.onmessage = async (event) => {
   const request = event.data;
   let bitmap: ImageBitmap | undefined;
+  let rendered:
+    | Awaited<ReturnType<typeof renderer.render>>
+    | undefined;
 
   try {
-    await renderer.render({
+    rendered = await renderer.render({
       card: request.card,
       target: request.target,
       asset: request.asset,
@@ -77,6 +80,14 @@ scope.onmessage = async (event) => {
 
   try {
     bitmap = await transferCanvasToImageBitmap(canvas);
+    const contentRect = rendered?.contentRect ?? {
+      x: 0,
+      y: 0,
+      width: canvas.width,
+      height: canvas.height
+    };
+    const frameRect = rendered?.frameRect ?? contentRect;
+    const baseFrameRect = rendered?.baseFrameRect ?? frameRect;
 
     scope.postMessage(
       {
@@ -84,7 +95,11 @@ scope.onmessage = async (event) => {
         ok: true,
         bitmap,
         width: canvas.width,
-        height: canvas.height
+        height: canvas.height,
+        contentRect,
+        frameRect,
+        baseFrameRect,
+        frameRotation: rendered?.frameRotation ?? 0
       },
       [bitmap]
     );

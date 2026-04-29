@@ -1,11 +1,28 @@
-import { createMantlePreviewRenderer } from '@mantle/engine/render';
+import {
+  createMantlePreviewRenderer,
+  SOURCE_PLACEMENT_ZOOM_MAX,
+  SOURCE_PLACEMENT_ZOOM_MIN,
+  resolveCoverSourceCrop,
+  resolveSourceCropFocus,
+  resolveSourceCropForContent,
+  resolveSourceCropZoom
+} from '@mantle/engine/render';
 import type { MantlePreviewRenderer } from '@mantle/engine/render';
 import type {
   MantleCard,
+  MantleFrameTransform,
   MantleRenderableAsset,
+  MantleSourceCrop,
+  MantleSourcePlacement,
   MantleSurfaceTarget
 } from '@mantle/schemas/model';
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent
+} from 'react';
 
 import { Icon } from '../../components/Icon';
 import styles from './CardCanvas.module.css';
@@ -18,6 +35,25 @@ import type {
 const PREVIEW_MAX_PIXEL_COUNT = 16_000_000;
 const PREVIEW_WORKER_PIXEL_THRESHOLD = 900_000;
 const PREVIEW_MIN_RENDER_INTERVAL_MS = 1000 / 30;
+const FRAME_SCALE_MIN = 0.35;
+const FRAME_SCALE_MAX = 2.5;
+const FRAME_SNAP_DISTANCE_PX = 6;
+const FRAME_ROTATION_SNAP_DEGREES = 2;
+const FRAME_ROTATION_SNAP_ANCHORS = [
+  -180,
+  -135,
+  -90,
+  -45,
+  -30,
+  -15,
+  0,
+  15,
+  30,
+  45,
+  90,
+  135,
+  180
+] as const;
 const HEAVY_PREVIEW_BACKGROUND_IDS = new Set([
   'symbol-wave',
   'aurora-gradient',
@@ -35,6 +71,8 @@ type CardCanvasProps = {
   backgroundAsset?: MantleRenderableAsset | undefined;
   onChooseSource?: () => void;
   onRelinkSource?: () => void;
+  onSourcePlacementChange?: (placement: MantleSourcePlacement) => void;
+  onFrameTransformChange?: (transform: MantleFrameTransform) => void;
 };
 
 type PreviewRenderState = {
@@ -55,6 +93,51 @@ type PreviewWorkerJob = {
 type PreviewWorkerClient = {
   render: (request: PreviewWorkerRequest) => Promise<PreviewWorkerResult>;
   dispose: () => void;
+};
+
+type StageRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type PreviewSurface = {
+  canvasWidth: number;
+  canvasHeight: number;
+  canvasCssRect: StageRect;
+  contentRect: StageRect;
+  contentCssRect: StageRect;
+  frameRect: StageRect;
+  frameCssRect: StageRect;
+  baseFrameRect: StageRect;
+  baseFrameCssRect: StageRect;
+  frameRotation: number;
+};
+
+type SourceDragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  crop: MantleSourceCrop;
+};
+
+type FrameResizeHandle = 'n' | 'e' | 's' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
+type FrameDragMode = 'move' | 'resize' | 'rotate';
+
+type FrameDragState = {
+  pointerId: number;
+  mode: FrameDragMode;
+  handle?: FrameResizeHandle | undefined;
+  startX: number;
+  startY: number;
+  transform: MantleFrameTransform;
+  startAngle: number;
+};
+
+type FrameSnapGuide = {
+  axis: 'x' | 'y';
+  position: number;
 };
 
 class PreviewRenderCancelledError extends Error {
@@ -112,6 +195,493 @@ function releasePreviewBufferCanvas(canvas: HTMLCanvasElement | null): void {
   if (!canvas) return;
   canvas.width = 1;
   canvas.height = 1;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeCrop(crop: MantleSourceCrop): MantleSourceCrop {
+  const width = clamp(crop.width, 0.01, 1);
+  const height = clamp(crop.height, 0.01, 1);
+  return {
+    x: clamp(crop.x, 0, 1 - width),
+    y: clamp(crop.y, 0, 1 - height),
+    width,
+    height
+  };
+}
+
+function normalizeRotation(rotation: number): number {
+  const normalized = ((((rotation + 180) % 360) + 360) % 360) - 180;
+  return Object.is(normalized, -0) ? 0 : normalized;
+}
+
+function snapFrameRotation(rotation: number): {
+  rotation: number;
+  anchor: number | null;
+} {
+  const normalized = normalizeRotation(rotation);
+  let best: { anchor: number; distance: number } | null = null;
+
+  for (const anchor of FRAME_ROTATION_SNAP_ANCHORS) {
+    const distance = Math.abs(normalizeRotation(normalized - anchor));
+    if (distance > FRAME_ROTATION_SNAP_DEGREES) continue;
+    if (best && distance >= best.distance) continue;
+    best = { anchor, distance };
+  }
+
+  return best
+    ? { rotation: normalizeRotation(best.anchor), anchor: normalizeRotation(best.anchor) }
+    : { rotation: normalized, anchor: null };
+}
+
+function formatRotationAngle(rotation: number): string {
+  const rounded = Math.round(normalizeRotation(rotation));
+  const display = Math.abs(rounded) === 180 ? 180 : rounded;
+  return `${display}°`;
+}
+
+function normalizeFrameTransform(
+  transform: MantleFrameTransform | undefined
+): MantleFrameTransform {
+  return {
+    x: clamp(transform?.x ?? 0, -1, 1),
+    y: clamp(transform?.y ?? 0, -1, 1),
+    scaleX: clamp(transform?.scaleX ?? 1, FRAME_SCALE_MIN, FRAME_SCALE_MAX),
+    scaleY: clamp(transform?.scaleY ?? 1, FRAME_SCALE_MIN, FRAME_SCALE_MAX),
+    rotation: normalizeRotation(transform?.rotation ?? 0)
+  };
+}
+
+function applyFrameTransformToCssRect({
+  rect,
+  canvasRect,
+  transform
+}: {
+  rect: StageRect;
+  canvasRect: StageRect;
+  transform: MantleFrameTransform;
+}): StageRect {
+  const width = rect.width * transform.scaleX;
+  const height = rect.height * transform.scaleY;
+
+  return fitTransformedRectInsideCanvas({
+    x: rect.x + (rect.width - width) / 2 + transform.x * canvasRect.width,
+    y: rect.y + (rect.height - height) / 2 + transform.y * canvasRect.height,
+    width,
+    height
+  }, canvasRect, transform.rotation);
+}
+
+function frameTransformAngle(
+  event: Pick<PointerEvent, 'clientX' | 'clientY'>,
+  frameRect: StageRect
+): number {
+  const centerX = frameRect.x + frameRect.width / 2;
+  const centerY = frameRect.y + frameRect.height / 2;
+  return Math.atan2(event.clientY - centerY, event.clientX - centerX);
+}
+
+function rotatedBounds(rect: StageRect, rotation: number): StageRect {
+  if (rotation === 0) return rect;
+
+  const radians = (rotation * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const width = rect.width * cos + rect.height * sin;
+  const height = rect.width * sin + rect.height * cos;
+  const centerX = rect.x + rect.width / 2;
+  const centerY = rect.y + rect.height / 2;
+
+  return {
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height
+  };
+}
+
+function fitTransformedRectInsideCanvas(
+  rect: StageRect,
+  canvasRect: StageRect,
+  rotation: number
+): StageRect {
+  let fitted = rect;
+  let bounds = rotatedBounds(fitted, rotation);
+  const fitScale = Math.min(
+    1,
+    canvasRect.width / Math.max(1, bounds.width),
+    canvasRect.height / Math.max(1, bounds.height)
+  );
+
+  if (fitScale < 1) {
+    const centerX = fitted.x + fitted.width / 2;
+    const centerY = fitted.y + fitted.height / 2;
+    const width = fitted.width * fitScale;
+    const height = fitted.height * fitScale;
+    fitted = {
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width,
+      height
+    };
+    bounds = rotatedBounds(fitted, rotation);
+  }
+
+  let shiftX = 0;
+  let shiftY = 0;
+  if (bounds.x < canvasRect.x) shiftX = canvasRect.x - bounds.x;
+  if (bounds.x + bounds.width > canvasRect.x + canvasRect.width) {
+    shiftX = canvasRect.x + canvasRect.width - (bounds.x + bounds.width);
+  }
+  if (bounds.y < canvasRect.y) shiftY = canvasRect.y - bounds.y;
+  if (bounds.y + bounds.height > canvasRect.y + canvasRect.height) {
+    shiftY = canvasRect.y + canvasRect.height - (bounds.y + bounds.height);
+  }
+
+  return {
+    ...fitted,
+    x: fitted.x + shiftX,
+    y: fitted.y + shiftY
+  };
+}
+
+function clampFrameTransformToSurface(
+  transform: MantleFrameTransform,
+  surface: PreviewSurface | null
+): MantleFrameTransform {
+  const normalized = normalizeFrameTransform(transform);
+  if (!surface) return normalized;
+
+  let next = normalized;
+  let rect = applyFrameTransformToCssRect({
+    rect: surface.baseFrameCssRect,
+    canvasRect: surface.canvasCssRect,
+    transform: next
+  });
+  const rawWidth = surface.baseFrameCssRect.width * next.scaleX;
+  const rawHeight = surface.baseFrameCssRect.height * next.scaleY;
+  if (rect.width < rawWidth || rect.height < rawHeight) {
+    const fitScale = Math.min(
+      rect.width / Math.max(1, rawWidth),
+      rect.height / Math.max(1, rawHeight)
+    );
+    next = normalizeFrameTransform({
+      ...next,
+      scaleX: next.scaleX * fitScale,
+      scaleY: next.scaleY * fitScale
+    });
+    rect = applyFrameTransformToCssRect({
+      rect: surface.baseFrameCssRect,
+      canvasRect: surface.canvasCssRect,
+      transform: next
+    });
+  }
+
+  const wantedRect = {
+    x: surface.baseFrameCssRect.x +
+      (surface.baseFrameCssRect.width - surface.baseFrameCssRect.width * next.scaleX) / 2 +
+      next.x * surface.canvasCssRect.width,
+    y: surface.baseFrameCssRect.y +
+      (surface.baseFrameCssRect.height - surface.baseFrameCssRect.height * next.scaleY) / 2 +
+      next.y * surface.canvasCssRect.height,
+    width: surface.baseFrameCssRect.width * next.scaleX,
+    height: surface.baseFrameCssRect.height * next.scaleY
+  };
+
+  return normalizeFrameTransform({
+    ...next,
+    x: next.x + (rect.x - wantedRect.x) / Math.max(1, surface.canvasCssRect.width),
+    y: next.y + (rect.y - wantedRect.y) / Math.max(1, surface.canvasCssRect.height)
+  });
+}
+
+function findNearestSnap({
+  sources,
+  targets
+}: {
+  sources: number[];
+  targets: number[];
+}): { delta: number; position: number } | null {
+  let best: { delta: number; position: number; distance: number } | null = null;
+
+  for (const source of sources) {
+    for (const target of targets) {
+      const delta = target - source;
+      const distance = Math.abs(delta);
+      if (distance > FRAME_SNAP_DISTANCE_PX) continue;
+      if (best && distance >= best.distance) continue;
+      best = { delta, position: target, distance };
+    }
+  }
+
+  return best ? { delta: best.delta, position: best.position } : null;
+}
+
+function snapFrameTransformToSurface({
+  transform,
+  surface,
+  includeEdges
+}: {
+  transform: MantleFrameTransform;
+  surface: PreviewSurface | null;
+  includeEdges: boolean;
+}): { transform: MantleFrameTransform; guides: FrameSnapGuide[] } {
+  const clamped = clampFrameTransformToSurface(transform, surface);
+  if (!surface) return { transform: clamped, guides: [] };
+
+  const rect = applyFrameTransformToCssRect({
+    rect: surface.baseFrameCssRect,
+    canvasRect: surface.canvasCssRect,
+    transform: clamped
+  });
+  const bounds = rotatedBounds(rect, clamped.rotation);
+  const canvas = surface.canvasCssRect;
+  const frameCenterX = bounds.x + bounds.width / 2;
+  const frameCenterY = bounds.y + bounds.height / 2;
+  const canvasCenterX = canvas.x + canvas.width / 2;
+  const canvasCenterY = canvas.y + canvas.height / 2;
+  const xSources = includeEdges
+    ? [bounds.x, frameCenterX, bounds.x + bounds.width]
+    : [frameCenterX];
+  const ySources = includeEdges
+    ? [bounds.y, frameCenterY, bounds.y + bounds.height]
+    : [frameCenterY];
+  const xTargets = includeEdges
+    ? [canvas.x, canvasCenterX, canvas.x + canvas.width]
+    : [canvasCenterX];
+  const yTargets = includeEdges
+    ? [canvas.y, canvasCenterY, canvas.y + canvas.height]
+    : [canvasCenterY];
+  const xSnap = findNearestSnap({ sources: xSources, targets: xTargets });
+  const ySnap = findNearestSnap({ sources: ySources, targets: yTargets });
+
+  if (!xSnap && !ySnap) return { transform: clamped, guides: [] };
+
+  return {
+    transform: clampFrameTransformToSurface({
+      ...clamped,
+      x: clamped.x + (xSnap?.delta ?? 0) / Math.max(1, canvas.width),
+      y: clamped.y + (ySnap?.delta ?? 0) / Math.max(1, canvas.height)
+    }, surface),
+    guides: [
+      ...(xSnap ? [{ axis: 'x' as const, position: xSnap.position }] : []),
+      ...(ySnap ? [{ axis: 'y' as const, position: ySnap.position }] : [])
+    ]
+  };
+}
+
+function localFrameDelta({
+  deltaX,
+  deltaY,
+  rotation
+}: {
+  deltaX: number;
+  deltaY: number;
+  rotation: number;
+}): { x: number; y: number } {
+  const radians = (-rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return {
+    x: deltaX * cos - deltaY * sin,
+    y: deltaX * sin + deltaY * cos
+  };
+}
+
+function resizeHandleDirections(handle: FrameResizeHandle): {
+  x: -1 | 0 | 1;
+  y: -1 | 0 | 1;
+} {
+  return {
+    x: handle.includes('e') ? 1 : handle.includes('w') ? -1 : 0,
+    y: handle.includes('s') ? 1 : handle.includes('n') ? -1 : 0
+  };
+}
+
+function isCornerResizeHandle(handle: FrameResizeHandle): boolean {
+  const direction = resizeHandleDirections(handle);
+  return direction.x !== 0 && direction.y !== 0;
+}
+
+function resolveEditableCrop(
+  placement: MantleSourcePlacement | undefined,
+  asset: MantleRenderableAsset | undefined,
+  surface: PreviewSurface | null
+): MantleSourceCrop {
+  return resolveSourceCropForContent({
+    placement,
+    sourceWidth: asset?.width ?? 16,
+    sourceHeight: asset?.height ?? 9,
+    destinationWidth: surface?.contentRect.width ?? 16,
+    destinationHeight: surface?.contentRect.height ?? 9
+  });
+}
+
+function resizeCropAroundCenter(
+  crop: MantleSourceCrop,
+  coverCrop: MantleSourceCrop,
+  zoom: number
+): MantleSourceCrop {
+  const nextZoom = clamp(
+    zoom,
+    SOURCE_PLACEMENT_ZOOM_MIN,
+    SOURCE_PLACEMENT_ZOOM_MAX
+  );
+  const width = clamp(coverCrop.width / nextZoom, 0.01, coverCrop.width);
+  const height = clamp(coverCrop.height / nextZoom, 0.01, coverCrop.height);
+  const centerX = crop.x + crop.width / 2;
+  const centerY = crop.y + crop.height / 2;
+
+  return normalizeCrop({
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height
+  });
+}
+
+function resizeCropAroundAnchor({
+  crop,
+  coverCrop,
+  zoom,
+  anchorX,
+  anchorY
+}: {
+  crop: MantleSourceCrop;
+  coverCrop: MantleSourceCrop;
+  zoom: number;
+  anchorX: number;
+  anchorY: number;
+}): MantleSourceCrop {
+  const nextZoom = clamp(
+    zoom,
+    SOURCE_PLACEMENT_ZOOM_MIN,
+    SOURCE_PLACEMENT_ZOOM_MAX
+  );
+  const width = clamp(coverCrop.width / nextZoom, 0.01, coverCrop.width);
+  const height = clamp(coverCrop.height / nextZoom, 0.01, coverCrop.height);
+  const pinnedSourceX = crop.x + anchorX * crop.width;
+  const pinnedSourceY = crop.y + anchorY * crop.height;
+
+  return normalizeCrop({
+    x: pinnedSourceX - anchorX * width,
+    y: pinnedSourceY - anchorY * height,
+    width,
+    height
+  });
+}
+
+function centerCrop(crop: MantleSourceCrop): MantleSourceCrop {
+  return normalizeCrop({
+    ...crop,
+    x: (1 - crop.width) / 2,
+    y: (1 - crop.height) / 2
+  });
+}
+
+function moveCropByContentDelta(
+  crop: MantleSourceCrop,
+  deltaX: number,
+  deltaY: number,
+  contentRect: StageRect
+): MantleSourceCrop {
+  return normalizeCrop({
+    ...crop,
+    x: crop.x - (deltaX / Math.max(1, contentRect.width)) * crop.width,
+    y: crop.y - (deltaY / Math.max(1, contentRect.height)) * crop.height
+  });
+}
+
+function sourcePreviewImageStyle(
+  crop: MantleSourceCrop,
+  contentRect: StageRect
+): CSSProperties {
+  const width = contentRect.width / crop.width;
+  const height = contentRect.height / crop.height;
+
+  return {
+    width: `${width}px`,
+    height: `${height}px`,
+    transform: `translate(${-crop.x * width}px, ${-crop.y * height}px)`
+  };
+}
+
+function sourceImageRectForCrop(
+  crop: MantleSourceCrop,
+  contentRect: StageRect
+): StageRect {
+  const width = contentRect.width / crop.width;
+  const height = contentRect.height / crop.height;
+
+  return {
+    x: -crop.x * width,
+    y: -crop.y * height,
+    width,
+    height
+  };
+}
+
+function snapSourceCropToFrame({
+  crop,
+  contentRect
+}: {
+  crop: MantleSourceCrop;
+  contentRect: StageRect;
+}): { crop: MantleSourceCrop; guides: FrameSnapGuide[] } {
+  const normalized = normalizeCrop(crop);
+  const imageRect = sourceImageRectForCrop(normalized, contentRect);
+  const frameCenterX = contentRect.width / 2;
+  const frameCenterY = contentRect.height / 2;
+  const imageCenterX = imageRect.x + imageRect.width / 2;
+  const imageCenterY = imageRect.y + imageRect.height / 2;
+  const xSnap = findNearestSnap({
+    sources: [imageRect.x, imageCenterX, imageRect.x + imageRect.width],
+    targets: [0, frameCenterX, contentRect.width]
+  });
+  const ySnap = findNearestSnap({
+    sources: [imageRect.y, imageCenterY, imageRect.y + imageRect.height],
+    targets: [0, frameCenterY, contentRect.height]
+  });
+
+  if (!xSnap && !ySnap) return { crop: normalized, guides: [] };
+
+  return {
+    crop: normalizeCrop({
+      ...normalized,
+      x: normalized.x - (xSnap?.delta ?? 0) / Math.max(1, imageRect.width),
+      y: normalized.y - (ySnap?.delta ?? 0) / Math.max(1, imageRect.height)
+    }),
+    guides: [
+      ...(xSnap ? [{ axis: 'x' as const, position: xSnap.position }] : []),
+      ...(ySnap ? [{ axis: 'y' as const, position: ySnap.position }] : [])
+    ]
+  };
+}
+
+function previewSurfaceChanged(
+  current: PreviewSurface | null,
+  next: PreviewSurface
+): boolean {
+  if (!current) return true;
+  const keys: Array<keyof StageRect> = ['x', 'y', 'width', 'height'];
+  const rectChanged = (left: StageRect, right: StageRect) =>
+    keys.some((key) => Math.abs(left[key] - right[key]) > 0.5);
+
+  return (
+    current.canvasWidth !== next.canvasWidth ||
+    current.canvasHeight !== next.canvasHeight ||
+    rectChanged(current.canvasCssRect, next.canvasCssRect) ||
+    rectChanged(current.contentRect, next.contentRect) ||
+    rectChanged(current.contentCssRect, next.contentCssRect) ||
+    rectChanged(current.frameRect, next.frameRect) ||
+    rectChanged(current.frameCssRect, next.frameCssRect) ||
+    rectChanged(current.baseFrameRect, next.baseFrameRect) ||
+    rectChanged(current.baseFrameCssRect, next.baseFrameCssRect) ||
+    Math.abs(current.frameRotation - next.frameRotation) > 0.1
+  );
 }
 
 function createPreviewWorkerClient(): PreviewWorkerClient {
@@ -178,7 +748,11 @@ function createPreviewWorkerClient(): PreviewWorkerClient {
       job.resolve({
         bitmap: response.bitmap,
         width: response.width,
-        height: response.height
+        height: response.height,
+        contentRect: response.contentRect,
+        frameRect: response.frameRect,
+        baseFrameRect: response.baseFrameRect,
+        frameRotation: response.frameRotation
       });
     } else {
       job.reject(
@@ -249,18 +823,40 @@ export function CardCanvas({
   asset,
   backgroundAsset,
   onChooseSource,
-  onRelinkSource
+  onRelinkSource,
+  onSourcePlacementChange,
+  onFrameTransformChange
 }: CardCanvasProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewWorkerRef = useRef<PreviewWorkerClient | null>(null);
   const previewRendererRef = useRef<MantlePreviewRenderer | null>(null);
+  const sourceDragRef = useRef<SourceDragState | null>(null);
+  const frameDragRef = useRef<FrameDragState | null>(null);
+  const sourceCommitTimerRef = useRef<number | null>(null);
+  const sourceDraftFrameRef = useRef(0);
+  const frameTransformFrameRef = useRef(0);
+  const pendingFrameTransformRef = useRef<MantleFrameTransform | null>(null);
+  const pendingSourceDraftRef = useRef<MantleSourceCrop | null>(null);
+  const latestSourceDraftRef = useRef<MantleSourceCrop | null>(null);
   const renderSeqRef = useRef(0);
   const lastPreviewRenderStartRef = useRef(0);
   const latestRenderStateRef = useRef<PreviewRenderState | null>(null);
   const schedulePreviewRenderRef = useRef<(() => void) | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [previewSurface, setPreviewSurface] = useState<PreviewSurface | null>(null);
+  const [sourceEditorOpen, setSourceEditorOpen] = useState(false);
+  const [frameEditorOpen, setFrameEditorOpen] = useState(false);
+  const [sourceDragging, setSourceDragging] = useState(false);
+  const [frameDragging, setFrameDragging] = useState(false);
+  const [sourceDraftCrop, setSourceDraftCrop] = useState<MantleSourceCrop | null>(null);
+  const [sourceSnapGuides, setSourceSnapGuides] = useState<FrameSnapGuide[]>([]);
+  const [frameDraftTransform, setFrameDraftTransform] =
+    useState<MantleFrameTransform | null>(null);
+  const [frameSnapGuides, setFrameSnapGuides] = useState<FrameSnapGuide[]>([]);
+  const [frameRotationSnapAngle, setFrameRotationSnapAngle] =
+    useState<number | null>(null);
   const hasAssetSource = Boolean(asset?.objectUrl);
   const isMissingSource = Boolean(card.sourceAssetId && !hasAssetSource);
 
@@ -274,6 +870,11 @@ export function CardCanvas({
 
   useEffect(() => {
     return () => {
+      if (sourceCommitTimerRef.current != null) {
+        window.clearTimeout(sourceCommitTimerRef.current);
+      }
+      cancelAnimationFrame(sourceDraftFrameRef.current);
+      cancelAnimationFrame(frameTransformFrameRef.current);
       previewWorkerRef.current?.dispose();
       previewWorkerRef.current = null;
       previewRendererRef.current?.dispose();
@@ -282,6 +883,17 @@ export function CardCanvas({
       bufferCanvasRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (hasAssetSource) return;
+    setSourceEditorOpen(false);
+    setSourceDragging(false);
+    setSourceDraftCrop(null);
+    setSourceSnapGuides([]);
+    sourceDragRef.current = null;
+    latestSourceDraftRef.current = null;
+    pendingSourceDraftRef.current = null;
+  }, [hasAssetSource]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -295,7 +907,65 @@ export function CardCanvas({
     let renderInFlight = false;
     let renderQueued = false;
 
-    const drawBitmap = (bitmap: CanvasImageSource, width: number, height: number) => {
+    const updatePreviewSurface = (
+      width: number,
+      height: number,
+      contentRect: StageRect,
+      frameRect: StageRect,
+      baseFrameRect: StageRect,
+      frameRotation: number
+    ) => {
+      const wrapRect = wrap.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const scaleX = canvasRect.width / Math.max(1, width);
+      const scaleY = canvasRect.height / Math.max(1, height);
+      const nextSurface: PreviewSurface = {
+        canvasWidth: width,
+        canvasHeight: height,
+        canvasCssRect: {
+          x: canvasRect.left - wrapRect.left,
+          y: canvasRect.top - wrapRect.top,
+          width: canvasRect.width,
+          height: canvasRect.height
+        },
+        contentRect,
+        contentCssRect: {
+          x: canvasRect.left - wrapRect.left + contentRect.x * scaleX,
+          y: canvasRect.top - wrapRect.top + contentRect.y * scaleY,
+          width: contentRect.width * scaleX,
+          height: contentRect.height * scaleY
+        },
+        frameRect,
+        frameCssRect: {
+          x: canvasRect.left - wrapRect.left + frameRect.x * scaleX,
+          y: canvasRect.top - wrapRect.top + frameRect.y * scaleY,
+          width: frameRect.width * scaleX,
+          height: frameRect.height * scaleY
+        },
+        baseFrameRect,
+        baseFrameCssRect: {
+          x: canvasRect.left - wrapRect.left + baseFrameRect.x * scaleX,
+          y: canvasRect.top - wrapRect.top + baseFrameRect.y * scaleY,
+          width: baseFrameRect.width * scaleX,
+          height: baseFrameRect.height * scaleY
+        },
+        frameRotation
+      };
+
+      setPreviewSurface((current) =>
+        previewSurfaceChanged(current, nextSurface) ? nextSurface : current
+      );
+    };
+
+    const drawBitmap = (
+      bitmap: CanvasImageSource,
+      width: number,
+      height: number,
+      contentRect: StageRect,
+      frameRect: StageRect,
+      baseFrameRect: StageRect,
+      frameRotation: number
+    ) => {
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
 
@@ -305,6 +975,14 @@ export function CardCanvas({
       ctx.imageSmoothingQuality = 'high';
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(bitmap, 0, 0);
+      updatePreviewSurface(
+        width,
+        height,
+        contentRect,
+        frameRect,
+        baseFrameRect,
+        frameRotation
+      );
     };
 
     const render = async () => {
@@ -378,7 +1056,15 @@ export function CardCanvas({
                 return;
               }
 
-              drawBitmap(rendered.bitmap, rendered.width, rendered.height);
+              drawBitmap(
+                rendered.bitmap,
+                rendered.width,
+                rendered.height,
+                rendered.contentRect,
+                rendered.frameRect,
+                rendered.baseFrameRect,
+                rendered.frameRotation
+              );
               renderedInWorker = true;
             } finally {
               rendered.bitmap.close();
@@ -415,7 +1101,15 @@ export function CardCanvas({
           });
           if (disposed || seq !== renderSeqRef.current) return;
 
-          drawBitmap(rendered, rendered.width, rendered.height);
+          drawBitmap(
+            rendered.canvas,
+            rendered.width,
+            rendered.height,
+            rendered.contentRect,
+            rendered.frameRect,
+            rendered.baseFrameRect,
+            rendered.frameRotation
+          );
         }
 
         setRenderError(null);
@@ -472,6 +1166,318 @@ export function CardCanvas({
     schedulePreviewRenderRef.current?.();
   }, [card, target, asset, backgroundAsset, hasAssetSource]);
 
+  const sourceEditorStyle: CSSProperties | undefined = previewSurface
+    ? {
+        left: `${previewSurface.contentCssRect.x}px`,
+        top: `${previewSurface.contentCssRect.y}px`,
+        width: `${previewSurface.contentCssRect.width}px`,
+        height: `${previewSurface.contentCssRect.height}px`,
+        transform:
+          previewSurface.frameRotation === 0
+            ? undefined
+            : `rotate(${previewSurface.frameRotation}deg)`,
+        transformOrigin:
+          previewSurface.frameRotation === 0
+            ? undefined
+            : `${previewSurface.frameCssRect.x + previewSurface.frameCssRect.width / 2 - previewSurface.contentCssRect.x}px ${previewSurface.frameCssRect.y + previewSurface.frameCssRect.height / 2 - previewSurface.contentCssRect.y}px`
+      }
+    : undefined;
+  const canEditSource =
+    hasAssetSource &&
+    Boolean(previewSurface) &&
+    Boolean(onSourcePlacementChange);
+  const coverCrop = resolveEditableCrop(
+    { mode: 'fill' },
+    asset,
+    previewSurface
+  );
+  const activeCrop = resolveEditableCrop(
+    card.sourcePlacement,
+    asset,
+    previewSurface
+  );
+  const visibleCrop = sourceDraftCrop ?? activeCrop;
+  const activeZoom = resolveSourceCropZoom(visibleCrop, coverCrop);
+  const showSourcePreview =
+    Boolean(asset?.objectUrl) &&
+    Boolean(previewSurface) &&
+    (Boolean(sourceDraftCrop) || (card.sourcePlacement?.mode ?? 'fit') !== 'fit');
+  const sourcePreviewStyle =
+    previewSurface && showSourcePreview
+      ? sourcePreviewImageStyle(visibleCrop, previewSurface.contentCssRect)
+      : undefined;
+  const activeFrameTransform = clampFrameTransformToSurface(
+    normalizeFrameTransform(card.frameTransform),
+    previewSurface
+  );
+  const visibleFrameTransform = frameDraftTransform ?? activeFrameTransform;
+  const visibleFrameCssRect = previewSurface
+    ? applyFrameTransformToCssRect({
+        rect: previewSurface.baseFrameCssRect,
+        canvasRect: previewSurface.canvasCssRect,
+        transform: visibleFrameTransform
+      })
+    : undefined;
+  const frameEditorStyle: CSSProperties | undefined = visibleFrameCssRect
+    ? {
+        left: `${visibleFrameCssRect.x}px`,
+        top: `${visibleFrameCssRect.y}px`,
+        width: `${visibleFrameCssRect.width}px`,
+        height: `${visibleFrameCssRect.height}px`,
+        transform: `rotate(${visibleFrameTransform.rotation}deg)`,
+        '--frame-editor-counter-rotation': `${-visibleFrameTransform.rotation}deg`
+      } as CSSProperties
+    : undefined;
+  const wrapViewportRect = wrapRef.current?.getBoundingClientRect();
+  const frameViewportRect =
+    wrapViewportRect && visibleFrameCssRect
+      ? {
+          x: wrapViewportRect.left + visibleFrameCssRect.x,
+          y: wrapViewportRect.top + visibleFrameCssRect.y,
+          width: visibleFrameCssRect.width,
+          height: visibleFrameCssRect.height
+      }
+      : undefined;
+  const canEditFrame = Boolean(previewSurface) && Boolean(onFrameTransformChange);
+
+  const clearDeferredSourceCommit = () => {
+    if (sourceCommitTimerRef.current == null) return;
+    window.clearTimeout(sourceCommitTimerRef.current);
+    sourceCommitTimerRef.current = null;
+  };
+
+  const flushSourceDraft = (crop = latestSourceDraftRef.current) => {
+    if (!crop) return;
+    const normalizedCrop = normalizeCrop(crop);
+    clearDeferredSourceCommit();
+    latestSourceDraftRef.current = null;
+    setSourceDraftCrop(null);
+    setSourceSnapGuides([]);
+    onSourcePlacementChange?.({
+      mode: 'crop',
+      crop: normalizedCrop,
+      focus: resolveSourceCropFocus(normalizedCrop),
+      zoom: resolveSourceCropZoom(normalizedCrop, coverCrop)
+    });
+  };
+
+  const setVisualSourceDraft = (crop: MantleSourceCrop) => {
+    const normalized = normalizeCrop(crop);
+    latestSourceDraftRef.current = normalized;
+    pendingSourceDraftRef.current = normalized;
+
+    if (sourceDraftFrameRef.current) return;
+    sourceDraftFrameRef.current = requestAnimationFrame(() => {
+      sourceDraftFrameRef.current = 0;
+      if (!pendingSourceDraftRef.current) return;
+      setSourceDraftCrop(pendingSourceDraftRef.current);
+      pendingSourceDraftRef.current = null;
+    });
+  };
+
+  const scheduleSourceCropCommit = (crop: MantleSourceCrop) => {
+    setSourceSnapGuides([]);
+    setVisualSourceDraft(crop);
+    clearDeferredSourceCommit();
+    sourceCommitTimerRef.current = window.setTimeout(() => {
+      flushSourceDraft(crop);
+    }, 140);
+  };
+
+  const updateZoom = (zoom: number) => {
+    scheduleSourceCropCommit(
+      resizeCropAroundCenter(visibleCrop, coverCrop, zoom)
+    );
+  };
+
+  const setVisualFrameTransform = (
+    transform: MantleFrameTransform,
+    options: { snap?: boolean; includeEdges?: boolean } = {}
+  ) => {
+    const result = options.snap
+        ? snapFrameTransformToSurface({
+            transform,
+            surface: previewSurface,
+            includeEdges: options.includeEdges ?? true
+          })
+        : {
+            transform: clampFrameTransformToSurface(transform, previewSurface),
+            guides: []
+          };
+    const normalized = result.transform;
+    setFrameSnapGuides(result.guides);
+    pendingFrameTransformRef.current = normalized;
+    setFrameDraftTransform(normalized);
+
+    if (frameTransformFrameRef.current) return;
+    frameTransformFrameRef.current = requestAnimationFrame(() => {
+      frameTransformFrameRef.current = 0;
+      if (!pendingFrameTransformRef.current) return;
+      onFrameTransformChange?.(pendingFrameTransformRef.current);
+      pendingFrameTransformRef.current = null;
+    });
+  };
+
+  const flushFrameTransform = () => {
+    if (pendingFrameTransformRef.current) {
+      onFrameTransformChange?.(pendingFrameTransformRef.current);
+      pendingFrameTransformRef.current = null;
+    }
+    setFrameSnapGuides([]);
+    setFrameRotationSnapAngle(null);
+    setFrameDraftTransform(null);
+  };
+
+  const resetFrameTransform = () => {
+    pendingFrameTransformRef.current = null;
+    setFrameDraftTransform(null);
+    setFrameSnapGuides([]);
+    setFrameRotationSnapAngle(null);
+    onFrameTransformChange?.({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
+  };
+
+  const beginFrameDrag = (
+    event: ReactPointerEvent<HTMLDivElement | HTMLButtonElement>,
+    mode: FrameDragMode,
+    handle?: FrameResizeHandle
+  ) => {
+    if (!frameViewportRect) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setFrameDragging(true);
+    setFrameRotationSnapAngle(null);
+    setFrameDraftTransform(visibleFrameTransform);
+    frameDragRef.current = {
+      pointerId: event.pointerId,
+      mode,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      transform: visibleFrameTransform,
+      startAngle: frameTransformAngle(event, frameViewportRect)
+    };
+  };
+
+  const updateFrameDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = frameDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !previewSurface || !frameViewportRect) {
+      return;
+    }
+
+    if (drag.mode === 'move') {
+      setVisualFrameTransform({
+        ...drag.transform,
+        x: drag.transform.x + (event.clientX - drag.startX) / Math.max(1, previewSurface.canvasCssRect.width),
+        y: drag.transform.y + (event.clientY - drag.startY) / Math.max(1, previewSurface.canvasCssRect.height)
+      }, {
+        snap: !event.altKey,
+        includeEdges: true
+      });
+      return;
+    }
+
+    if (drag.mode === 'resize' && drag.handle) {
+      const direction = resizeHandleDirections(drag.handle);
+      const delta = localFrameDelta({
+        deltaX: event.clientX - drag.startX,
+        deltaY: event.clientY - drag.startY,
+        rotation: drag.transform.rotation
+      });
+      const baseWidth = Math.max(1, previewSurface.baseFrameCssRect.width);
+      const baseHeight = Math.max(1, previewSurface.baseFrameCssRect.height);
+      const startWidth = baseWidth * drag.transform.scaleX;
+      const startHeight = baseHeight * drag.transform.scaleY;
+
+      if (isCornerResizeHandle(drag.handle)) {
+        const handleVectorX = (direction.x * startWidth) / 2;
+        const handleVectorY = (direction.y * startHeight) / 2;
+        const diagonalLengthSquared =
+          handleVectorX * handleVectorX + handleVectorY * handleVectorY;
+        const multiplierDelta =
+          diagonalLengthSquared <= 0
+            ? 0
+            : (delta.x * handleVectorX + delta.y * handleVectorY) /
+              diagonalLengthSquared;
+        const minMultiplier = Math.max(
+          FRAME_SCALE_MIN / drag.transform.scaleX,
+          FRAME_SCALE_MIN / drag.transform.scaleY
+        );
+        const maxMultiplier = Math.min(
+          FRAME_SCALE_MAX / drag.transform.scaleX,
+          FRAME_SCALE_MAX / drag.transform.scaleY
+        );
+        const multiplier = clamp(
+          1 + multiplierDelta,
+          minMultiplier,
+          maxMultiplier
+        );
+
+        setVisualFrameTransform({
+          ...drag.transform,
+          scaleX: drag.transform.scaleX * multiplier,
+          scaleY: drag.transform.scaleY * multiplier
+        }, {
+          snap: !event.altKey,
+          includeEdges: false
+        });
+        return;
+      }
+
+      const nextWidth =
+        direction.x === 0 ? startWidth : startWidth + delta.x * direction.x * 2;
+      const nextHeight =
+        direction.y === 0 ? startHeight : startHeight + delta.y * direction.y * 2;
+
+      setVisualFrameTransform({
+        ...drag.transform,
+        scaleX:
+          direction.x === 0
+            ? drag.transform.scaleX
+            : clamp(nextWidth / baseWidth, FRAME_SCALE_MIN, FRAME_SCALE_MAX),
+        scaleY:
+          direction.y === 0
+            ? drag.transform.scaleY
+            : clamp(nextHeight / baseHeight, FRAME_SCALE_MIN, FRAME_SCALE_MAX)
+      }, {
+        snap: !event.altKey,
+        includeEdges: false
+      });
+      return;
+    }
+
+    const angle = frameTransformAngle(event, frameViewportRect);
+    const nextRotation = normalizeRotation(
+      drag.transform.rotation + ((angle - drag.startAngle) * 180) / Math.PI
+    );
+    const rotationSnap = event.altKey
+      ? { rotation: nextRotation, anchor: null }
+      : snapFrameRotation(nextRotation);
+    setFrameSnapGuides([]);
+    setFrameRotationSnapAngle(rotationSnap.anchor);
+    setVisualFrameTransform({
+      ...drag.transform,
+      rotation: rotationSnap.rotation
+    });
+  };
+
+  const endFrameDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (frameDragRef.current?.pointerId !== event.pointerId) return;
+    frameDragRef.current = null;
+    setFrameDragging(false);
+    flushFrameTransform();
+  };
+
+  const openFrameEditor = () => {
+    flushSourceDraft();
+    setSourceEditorOpen(false);
+    setFrameEditorOpen(true);
+  };
+
+  const openSourceEditor = () => {
+    flushFrameTransform();
+    setFrameEditorOpen(false);
+    setSourceEditorOpen(true);
+  };
+
   return (
     <div className={styles.wrap} ref={wrapRef}>
       <canvas
@@ -481,6 +1487,294 @@ export function CardCanvas({
         // intrinsic canvas size (width attribute) from forcing parent growth.
         style={{ width: 0, height: 0 }}
       />
+      {frameEditorOpen && previewSurface
+        ? frameSnapGuides.map((guide) => (
+            <div
+              key={`${guide.axis}-${Math.round(guide.position)}`}
+              className={
+                guide.axis === 'x'
+                  ? `${styles.frameSnapGuide} ${styles.frameSnapGuideVertical}`
+                  : `${styles.frameSnapGuide} ${styles.frameSnapGuideHorizontal}`
+              }
+              style={
+                guide.axis === 'x'
+                  ? {
+                      left: `${guide.position}px`,
+                      top: `${previewSurface.canvasCssRect.y}px`,
+                      height: `${previewSurface.canvasCssRect.height}px`
+                    }
+                  : {
+                      left: `${previewSurface.canvasCssRect.x}px`,
+                      top: `${guide.position}px`,
+                      width: `${previewSurface.canvasCssRect.width}px`
+                    }
+              }
+            />
+          ))
+        : null}
+      {hasAssetSource && sourceEditorStyle && !frameEditorOpen && !sourceEditorOpen && (canEditFrame || canEditSource) ? (
+        <div className={styles.stageHotspot} style={sourceEditorStyle}>
+          <div className={styles.stageHotspotActions}>
+            {canEditFrame ? (
+              <button
+                type="button"
+                className={styles.stageHotspotButton}
+                onClick={openFrameEditor}
+                title="Edit frame"
+              >
+                Frame
+              </button>
+            ) : null}
+            {canEditSource ? (
+              <button
+                type="button"
+                className={styles.stageHotspotButton}
+                onClick={openSourceEditor}
+                title="Edit image placement"
+              >
+                Image
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {canEditFrame && frameEditorStyle && frameEditorOpen ? (
+        <div
+          className={
+            frameDragging
+              ? `${styles.frameEditor} ${styles.frameEditorDragging}`
+              : styles.frameEditor
+          }
+          style={frameEditorStyle}
+          onPointerDown={(event) => beginFrameDrag(event, 'move')}
+          onPointerMove={updateFrameDrag}
+          onPointerUp={endFrameDrag}
+          onPointerCancel={endFrameDrag}
+        >
+          <button
+            type="button"
+            className={
+              frameRotationSnapAngle !== null
+                ? `${styles.frameRotateHandle} ${styles.frameRotateHandleSnapped}`
+                : styles.frameRotateHandle
+            }
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              beginFrameDrag(event, 'rotate');
+            }}
+            title="Rotate frame"
+          />
+          {frameRotationSnapAngle !== null ? (
+            <div className={styles.frameRotationBadge}>
+              {formatRotationAngle(frameRotationSnapAngle)}
+            </div>
+          ) : null}
+          {(['n', 'e', 's', 'w', 'nw', 'ne', 'sw', 'se'] as const).map((handle) => (
+            <button
+              key={handle}
+              type="button"
+              className={`${styles.frameScaleHandle} ${styles[`frameScaleHandle${handle.toUpperCase()}`]}`}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                beginFrameDrag(event, 'resize', handle);
+              }}
+              title="Resize frame"
+            />
+          ))}
+          <div
+            className={styles.frameEditorToolbar}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.frameToolButton}
+              onClick={resetFrameTransform}
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              className={`${styles.frameToolButton} ${styles.frameDoneButton}`}
+              onClick={() => {
+                flushFrameTransform();
+                setFrameEditorOpen(false);
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {canEditSource && sourceEditorStyle && sourceEditorOpen ? (
+        <div
+          className={
+            sourceDragging
+              ? `${styles.sourceEditor} ${styles.sourceEditorDragging}`
+              : styles.sourceEditor
+          }
+          style={sourceEditorStyle}
+          onPointerDown={(event) => {
+            if (!previewSurface) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setSourceDragging(true);
+            setVisualSourceDraft(visibleCrop);
+            sourceDragRef.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              crop: visibleCrop
+            };
+          }}
+          onPointerMove={(event) => {
+            const drag = sourceDragRef.current;
+            if (!drag || drag.pointerId !== event.pointerId || !previewSurface) return;
+            const nextCrop = moveCropByContentDelta(
+              drag.crop,
+              event.clientX - drag.startX,
+              event.clientY - drag.startY,
+              previewSurface.contentCssRect
+            );
+            const snapped = event.altKey
+              ? { crop: nextCrop, guides: [] }
+              : snapSourceCropToFrame({
+                  crop: nextCrop,
+                  contentRect: previewSurface.contentCssRect
+                });
+            setSourceSnapGuides(snapped.guides);
+            setVisualSourceDraft(snapped.crop);
+          }}
+          onPointerUp={(event) => {
+            if (sourceDragRef.current?.pointerId === event.pointerId) {
+              sourceDragRef.current = null;
+              setSourceDragging(false);
+              flushSourceDraft();
+            }
+          }}
+          onPointerCancel={(event) => {
+            if (sourceDragRef.current?.pointerId === event.pointerId) {
+              sourceDragRef.current = null;
+              setSourceDragging(false);
+              setSourceDraftCrop(null);
+              setSourceSnapGuides([]);
+              latestSourceDraftRef.current = null;
+              pendingSourceDraftRef.current = null;
+            }
+          }}
+          onWheel={(event) => {
+            event.preventDefault();
+            if (!previewSurface) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const anchorX = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+            const anchorY = clamp((event.clientY - rect.top) / Math.max(1, rect.height), 0, 1);
+            scheduleSourceCropCommit(
+              resizeCropAroundAnchor({
+                crop: visibleCrop,
+                coverCrop,
+                zoom: activeZoom - event.deltaY * 0.0045,
+                anchorX,
+                anchorY
+              })
+            );
+          }}
+        >
+          {asset?.objectUrl && sourcePreviewStyle ? (
+            <div className={styles.sourcePreviewClip} aria-hidden="true">
+              <img
+                alt=""
+                className={styles.sourcePreviewImage}
+                draggable={false}
+                src={asset.objectUrl}
+                style={sourcePreviewStyle}
+              />
+            </div>
+          ) : null}
+          {sourceSnapGuides.map((guide) => (
+            <div
+              key={`${guide.axis}-${Math.round(guide.position)}`}
+              className={
+                guide.axis === 'x'
+                  ? `${styles.sourceSnapGuide} ${styles.sourceSnapGuideVertical}`
+                  : `${styles.sourceSnapGuide} ${styles.sourceSnapGuideHorizontal}`
+              }
+              style={
+                guide.axis === 'x'
+                  ? { left: `${guide.position}px` }
+                  : { top: `${guide.position}px` }
+              }
+            />
+          ))}
+          <div
+            className={styles.sourceEditorToolbar}
+            onPointerDown={(event) => event.stopPropagation()}
+            onWheel={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={
+                (card.sourcePlacement?.mode ?? 'fit') === 'fit'
+                  ? `${styles.sourceToolButton} ${styles.sourceToolButtonActive}`
+                  : styles.sourceToolButton
+              }
+              onClick={() => {
+                clearDeferredSourceCommit();
+                setSourceDraftCrop(null);
+                setSourceSnapGuides([]);
+                latestSourceDraftRef.current = null;
+                pendingSourceDraftRef.current = null;
+                onSourcePlacementChange?.({ mode: 'fit' });
+              }}
+            >
+              Fit
+            </button>
+            <button
+              type="button"
+              className={
+                card.sourcePlacement?.mode === 'fill'
+                  ? `${styles.sourceToolButton} ${styles.sourceToolButtonActive}`
+                  : styles.sourceToolButton
+              }
+              onClick={() => {
+                clearDeferredSourceCommit();
+                setSourceDraftCrop(null);
+                setSourceSnapGuides([]);
+                latestSourceDraftRef.current = null;
+                pendingSourceDraftRef.current = null;
+                onSourcePlacementChange?.({ mode: 'fill' });
+              }}
+            >
+              Fill
+            </button>
+            <button
+              type="button"
+              className={styles.sourceToolButton}
+              onClick={() => flushSourceDraft(centerCrop(visibleCrop))}
+            >
+              Center
+            </button>
+            <label className={styles.sourceZoomControl}>
+              <span>Zoom</span>
+              <input
+                type="range"
+                min={SOURCE_PLACEMENT_ZOOM_MIN}
+                max={SOURCE_PLACEMENT_ZOOM_MAX}
+                step={0.01}
+                value={activeZoom}
+                onChange={(event) => updateZoom(Number(event.currentTarget.value))}
+              />
+            </label>
+            <button
+              type="button"
+              className={`${styles.sourceToolButton} ${styles.sourceDoneButton}`}
+              onClick={() => {
+                flushSourceDraft();
+                setSourceEditorOpen(false);
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      ) : null}
       {!hasAssetSource ? (
         <div className={styles.emptyOverlay}>
           <div

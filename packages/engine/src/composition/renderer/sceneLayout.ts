@@ -7,6 +7,10 @@ import type {
 
 import type { MantleCanvasRenderingContext2D } from '../canvas';
 import type { Rect } from '../types';
+import {
+  applyFrameTransformToRect,
+  resolveFrameTransform
+} from './frameTransform';
 import { fitFrameRectToAsset } from './layout';
 import {
   createTextBlockLayout,
@@ -28,6 +32,7 @@ export type MantleSceneLayout = {
   canvasRect: Rect;
   availableRect: Rect;
   imageBounds: Rect;
+  baseImageRect: Rect;
   imageRect: Rect;
   text: MantleText;
   showText: boolean;
@@ -36,6 +41,7 @@ export type MantleSceneLayout = {
   cornerRadius: number;
   contentPadding: number;
   drawScale: number;
+  frameRotation: number;
 };
 
 export function resolveMantleSceneLayout({
@@ -156,18 +162,25 @@ export function resolveMantleSceneLayout({
 
   const cornerRadius = card.frame.cornerRadius * scale;
   const contentPadding = (card.frame.contentPadding ?? 0) * scale;
-  const imageRect = fitFrameRectToAsset({
+  const baseImageRect = fitFrameRectToAsset({
     bounds: imageBounds,
     asset,
     card,
     cardWidth: width,
     contentPadding
   });
+  const frameTransform = resolveFrameTransform(card.frameTransform);
+  const imageRect = applyFrameTransformToRect({
+    rect: baseImageRect,
+    canvas: canvasRect,
+    transform: frameTransform
+  });
 
   return {
     canvasRect,
     availableRect,
     imageBounds,
+    baseImageRect,
     imageRect,
     text,
     showText,
@@ -175,6 +188,7 @@ export function resolveMantleSceneLayout({
     palette,
     cornerRadius,
     contentPadding,
-    drawScale
+    drawScale,
+    frameRotation: frameTransform.rotation
   };
 }

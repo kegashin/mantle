@@ -3,8 +3,10 @@ import type {
   MantleCard,
   MantleExportSettings,
   MantleFrame,
+  MantleFrameTransform,
   MantlePalette,
   MantleProject,
+  MantleSourcePlacement,
   MantleSurfaceTarget,
   MantleText,
   MantleTheme
@@ -13,7 +15,9 @@ import {
   DEFAULT_MANTLE_BACKGROUND,
   DEFAULT_MANTLE_EXPORT,
   DEFAULT_MANTLE_FRAME,
+  DEFAULT_MANTLE_FRAME_TRANSFORM,
   DEFAULT_MANTLE_PALETTE,
+  DEFAULT_MANTLE_SOURCE_PLACEMENT,
   DEFAULT_MANTLE_TARGETS,
   DEFAULT_MANTLE_TEXT,
   DEFAULT_MANTLE_THEME
@@ -44,6 +48,22 @@ function cloneMantleExportSettings(
   settings: MantleExportSettings
 ): MantleExportSettings {
   return { ...settings };
+}
+
+function cloneMantleSourcePlacement(
+  placement: MantleSourcePlacement
+): MantleSourcePlacement {
+  return {
+    ...placement,
+    crop: placement.crop ? { ...placement.crop } : undefined,
+    focus: placement.focus ? { ...placement.focus } : undefined
+  };
+}
+
+function cloneMantleFrameTransform(
+  transform: MantleFrameTransform
+): MantleFrameTransform {
+  return { ...transform };
 }
 
 function cloneMantleTarget(target: MantleSurfaceTarget): MantleSurfaceTarget {
@@ -78,6 +98,14 @@ export function createDefaultMantleExportSettings(): MantleExportSettings {
   return cloneMantleExportSettings(DEFAULT_MANTLE_EXPORT);
 }
 
+export function createDefaultMantleSourcePlacement(): MantleSourcePlacement {
+  return cloneMantleSourcePlacement(DEFAULT_MANTLE_SOURCE_PLACEMENT);
+}
+
+export function createDefaultMantleFrameTransform(): MantleFrameTransform {
+  return cloneMantleFrameTransform(DEFAULT_MANTLE_FRAME_TRANSFORM);
+}
+
 export function createDefaultMantleTargets(): MantleSurfaceTarget[] {
   return DEFAULT_MANTLE_TARGETS.map(cloneMantleTarget);
 }
@@ -105,6 +133,8 @@ export function createMantleCard({
     templateId: 'single-shot-centered',
     themeId: DEFAULT_MANTLE_THEME.id,
     background: createDefaultMantleBackground(),
+    sourcePlacement: createDefaultMantleSourcePlacement(),
+    frameTransform: createDefaultMantleFrameTransform(),
     frame: createDefaultMantleFrame(),
     text: createDefaultMantleText(),
     export: createDefaultMantleExportSettings()

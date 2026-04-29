@@ -32,6 +32,21 @@ describe('MantleProjectSchema', () => {
     expect(MantleCardSchema.parse(card).export.fileName).toBe('launch-update');
   });
 
+  it('accepts focus and zoom source placement for responsive frame resizing', () => {
+    const card = createMantleCard();
+    card.sourcePlacement = {
+      mode: 'crop',
+      focus: { x: 0.42, y: 0.58 },
+      zoom: 1.8
+    };
+
+    expect(MantleCardSchema.parse(card).sourcePlacement).toEqual({
+      mode: 'crop',
+      focus: { x: 0.42, y: 0.58 },
+      zoom: 1.8
+    });
+  });
+
   it('accepts a social card with an imported screenshot asset', () => {
     const project = createMantleProject();
     const asset = {

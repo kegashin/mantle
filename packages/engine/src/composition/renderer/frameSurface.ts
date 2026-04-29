@@ -27,6 +27,7 @@ import {
 } from '../shadows';
 import type { Rect } from '../types';
 import type { LoadedMantleImage } from './imageCache';
+import { resolveSourceImageDrawPlan } from './sourcePlacement';
 
 function clampRectToCanvas(rect: Rect, width: number, height: number): Rect {
   const x = Math.max(0, Math.floor(rect.x));
@@ -305,20 +306,23 @@ export function drawImageWithShadowedFrame(
 
   const imageWidth = 'naturalWidth' in image ? image.naturalWidth : image.width;
   const imageHeight = 'naturalHeight' in image ? image.naturalHeight : image.height;
-  const imageAspect = imageWidth / imageHeight;
-  const rectAspect = chrome.contentRect.width / chrome.contentRect.height;
-  let drawWidth = chrome.contentRect.width;
-  let drawHeight = chrome.contentRect.height;
-
-  if (imageAspect > rectAspect) {
-    drawHeight = chrome.contentRect.width / imageAspect;
-  } else {
-    drawWidth = chrome.contentRect.height * imageAspect;
-  }
-
-  const drawX = chrome.contentRect.x + (chrome.contentRect.width - drawWidth) / 2;
-  const drawY = chrome.contentRect.y + (chrome.contentRect.height - drawHeight) / 2;
-  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  const plan = resolveSourceImageDrawPlan({
+    placement: card.sourcePlacement,
+    sourceWidth: imageWidth,
+    sourceHeight: imageHeight,
+    contentRect: chrome.contentRect
+  });
+  ctx.drawImage(
+    image,
+    plan.sourceRect.x,
+    plan.sourceRect.y,
+    plan.sourceRect.width,
+    plan.sourceRect.height,
+    plan.destinationRect.x,
+    plan.destinationRect.y,
+    plan.destinationRect.width,
+    plan.destinationRect.height
+  );
   ctx.restore();
 
   const contentStroke = resolveContentStroke(card, palette);
@@ -343,7 +347,7 @@ export function drawEmptyScreenshotPlaceholder(
   palette: MantlePalette,
   width: number,
   showPlaceholderText = true
-): void {
+): Rect {
   drawOuterFrameShadow(ctx, imageRect, cornerRadius, card, palette, width);
   drawFrameBox(ctx, imageRect, cornerRadius, contentPadding, card, palette, width);
 
@@ -395,4 +399,6 @@ export function drawEmptyScreenshotPlaceholder(
     );
     ctx.restore();
   }
+
+  return chrome.contentRect;
 }

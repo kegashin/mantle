@@ -11,4 +11,16 @@ export type {
   MantleRenderMode,
   MantleRenderInput
 } from './composition/renderMantleCard';
-export type { MantlePreviewRenderer } from './composition/previewRenderer';
+export type {
+  MantlePreviewRenderer,
+  MantlePreviewRenderResult
+} from './composition/previewRenderer';
+export {
+  SOURCE_PLACEMENT_ZOOM_MAX,
+  SOURCE_PLACEMENT_ZOOM_MIN,
+  resolveCoverSourceCrop,
+  resolveSourceCropFocus,
+  resolveSourceCropForContent,
+  resolveSourceCropFromFocus,
+  resolveSourceCropZoom
+} from './composition/renderer/sourcePlacement';

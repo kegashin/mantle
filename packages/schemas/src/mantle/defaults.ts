@@ -2,7 +2,9 @@ import type {
   MantleBackground,
   MantleExportSettings,
   MantleFrame,
+  MantleFrameTransform,
   MantlePalette,
+  MantleSourcePlacement,
   MantleSurfaceTarget,
   MantleText,
   MantleTheme
@@ -75,9 +77,21 @@ export const DEFAULT_MANTLE_FRAME: MantleFrame = deepFreeze({
   alignment: 'center'
 });
 
+export const DEFAULT_MANTLE_FRAME_TRANSFORM: MantleFrameTransform = deepFreeze({
+  x: 0,
+  y: 0,
+  scaleX: 1,
+  scaleY: 1,
+  rotation: 0
+});
+
 export const DEFAULT_MANTLE_EXPORT: MantleExportSettings = deepFreeze({
   format: 'png',
   scale: 1
+});
+
+export const DEFAULT_MANTLE_SOURCE_PLACEMENT: MantleSourcePlacement = deepFreeze({
+  mode: 'fit'
 });
 
 export const DEFAULT_MANTLE_TARGETS: MantleSurfaceTarget[] = deepFreeze([

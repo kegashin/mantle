@@ -902,7 +902,8 @@ export function App() {
                 : {
                     ...item,
                     name: fileBaseName(file.name),
-                    sourceAssetId: asset.id
+                    sourceAssetId: asset.id,
+                    sourcePlacement: { mode: 'fit' }
                   }
               : item
           )
@@ -1788,6 +1789,12 @@ export function App() {
             backgroundAsset={activeBackgroundAsset}
             onChooseSource={() => openImagePicker({ mode: 'source-new' })}
             onRelinkSource={openRelinkSourcePicker}
+            onSourcePlacementChange={(sourcePlacement) =>
+              updateActiveCard({ sourcePlacement })
+            }
+            onFrameTransformChange={(frameTransform) =>
+              updateActiveCard({ frameTransform })
+            }
           />
         </section>
 

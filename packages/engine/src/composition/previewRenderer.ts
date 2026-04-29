@@ -18,8 +18,10 @@ import { resolveMantleSceneLayout } from './renderer/sceneLayout';
 import {
   drawMantleBackground,
   drawMantleFrameSurface,
-  drawMantleText
+  drawMantleText,
+  type MantleFrameSurfaceRender
 } from './renderer/sceneRender';
+import type { Rect } from './types';
 
 type CachedLayer = {
   canvas: MantleCanvas;
@@ -35,9 +37,19 @@ type CachedLayout = {
 };
 
 export type MantlePreviewRenderer = {
-  render: (input: MantleRenderInput) => Promise<MantleCanvas>;
+  render: (input: MantleRenderInput) => Promise<MantlePreviewRenderResult>;
   clear: () => void;
   dispose: () => void;
+};
+
+export type MantlePreviewRenderResult = {
+  canvas: MantleCanvas;
+  width: number;
+  height: number;
+  contentRect: Rect;
+  frameRect: Rect;
+  baseFrameRect: Rect;
+  frameRotation: number;
 };
 
 function ensureCanvas(input: MantleRenderInput, width: number, height: number): MantleCanvas {
@@ -160,6 +172,7 @@ function createLayoutGeometryKey(
     scale,
     asset: assetLayoutKey(input.asset),
     frame: frameLayoutKey(input.card.frame),
+    frameTransform: input.card.frameTransform ?? null,
     text: textGeometryKey(input.card.text)
   });
 }
@@ -221,6 +234,8 @@ function createBaseKey({
     backgroundKey,
     layoutGeometryKey,
     frame: input.card.frame,
+    frameTransform: input.card.frameTransform ?? null,
+    sourcePlacement: input.card.sourcePlacement ?? null,
     cardName: input.card.name,
     sourceAsset: assetRenderKey(input.asset),
     showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
@@ -277,12 +292,14 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
   let backgroundLayer: CachedLayer | undefined;
   let baseLayer: CachedLayer | undefined;
   let cachedLayout: CachedLayout | undefined;
+  let cachedFrameSurface: MantleFrameSurfaceRender | undefined;
   let disposed = false;
 
   const clear = () => {
     clearLayer(backgroundLayer);
     clearLayer(baseLayer);
     cachedLayout = undefined;
+    cachedFrameSurface = undefined;
   };
 
   return {
@@ -347,7 +364,7 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         try {
           baseCtx.clearRect(0, 0, width, height);
           baseCtx.drawImage(backgroundLayer.canvas, 0, 0);
-          await drawMantleFrameSurface({
+          cachedFrameSurface = await drawMantleFrameSurface({
             ctx: baseCtx,
             card: input.card,
             asset: input.asset,
@@ -359,6 +376,13 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
           baseCtx.restore();
         }
       }
+
+      const contentRect = cachedFrameSurface?.contentRect ?? cachedLayout.layout.imageRect;
+      const frameRect = cachedFrameSurface?.frameRect ?? cachedLayout.layout.imageRect;
+      const baseFrameRect =
+        cachedFrameSurface?.baseFrameRect ?? cachedLayout.layout.baseImageRect;
+      const frameRotation =
+        cachedFrameSurface?.frameRotation ?? cachedLayout.layout.frameRotation;
 
       outputCtx.save();
       try {
@@ -372,7 +396,15 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         outputCtx.restore();
       }
 
-      return output;
+      return {
+        canvas: output,
+        width,
+        height,
+        contentRect,
+        frameRect,
+        baseFrameRect,
+        frameRotation
+      };
     },
     clear,
     dispose() {

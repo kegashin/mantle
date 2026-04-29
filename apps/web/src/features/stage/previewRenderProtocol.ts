@@ -21,6 +21,25 @@ export type PreviewRenderResult = {
   bitmap: ImageBitmap;
   width: number;
   height: number;
+  contentRect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  frameRect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  baseFrameRect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  frameRotation: number;
 };
 
 export type PreviewRenderFailurePhase = 'render' | 'transfer';
