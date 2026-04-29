@@ -140,6 +140,14 @@ function ensureCanvas(input: MantleRenderInput, width: number, height: number): 
   return createCanvas(width, height);
 }
 
+export function resolveMantleExportFileName(
+  card: MantleCard,
+  asset?: MantleRenderableAsset | undefined
+): string {
+  const fileName = card.export.fileName?.trim() || asset?.name || card.name;
+  return `${safeExportFileName(fileName)}.${extensionForExportFormat(card.export.format)}`;
+}
+
 export async function renderMantleCardToCanvas(
   input: MantleRenderInput
 ): Promise<MantleCanvas> {
@@ -207,7 +215,7 @@ export async function exportMantleCard(
 
     return {
       blob,
-      filename: `${safeExportFileName(input.card.name)}.${extensionForExportFormat(format)}`,
+      filename: resolveMantleExportFileName(input.card, input.asset),
       mimeType
     };
   } finally {

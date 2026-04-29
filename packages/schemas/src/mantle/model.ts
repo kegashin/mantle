@@ -133,13 +133,14 @@ export type MantleBrand = {
   logoAssetId?: string | undefined;
 };
 
-export const MANTLE_EXPORT_FORMATS = ['png', 'jpeg', 'webp', 'avif'] as const;
+export const MANTLE_EXPORT_FORMATS = ['png', 'jpeg', 'webp'] as const;
 export type MantleExportFormat = (typeof MANTLE_EXPORT_FORMATS)[number];
 
 export type MantleExportSettings = {
   format: MantleExportFormat;
   scale: number;
   quality?: number | undefined;
+  fileName?: string | undefined;
 };
 
 export type ExportResult = {

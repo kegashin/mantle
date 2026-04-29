@@ -3,6 +3,7 @@ import type { MantleSurfaceTarget } from '@mantle/schemas/model';
 import { describe, expect, it } from 'vitest';
 
 import {
+  resolveMantleExportFileName,
   resolveMantleRenderSize,
   validateMantleRenderBudget
 } from './renderMantleCard';
@@ -42,5 +43,45 @@ describe('resolveMantleRenderSize', () => {
     expect(() => validateMantleRenderBudget(card, 8192, 8192)).toThrow(
       /working canvas memory/
     );
+  });
+
+  it('uses the source image name as the default export filename', () => {
+    const card = createMantleCard({
+      name: 'Untitled card',
+      sourceAssetId: 'asset-source'
+    });
+    const asset = {
+      id: 'asset-source',
+      role: 'screenshot',
+      name: 'Screenshot 2026-04-29 at 09.58.08.png',
+      width: 1200,
+      height: 800,
+      objectUrl: 'blob:mantle-source'
+    } as const;
+
+    expect(resolveMantleExportFileName(card, asset)).toBe(
+      'screenshot-2026-04-29-at-09-58-08.png'
+    );
+  });
+
+  it('lets explicit export filenames override source names', () => {
+    const card = createMantleCard({
+      sourceAssetId: 'asset-source'
+    });
+    card.export = {
+      ...card.export,
+      format: 'jpeg',
+      fileName: 'Launch update.png'
+    };
+    const asset = {
+      id: 'asset-source',
+      role: 'screenshot',
+      name: 'source.png',
+      width: 1200,
+      height: 800,
+      objectUrl: 'blob:mantle-source'
+    } as const;
+
+    expect(resolveMantleExportFileName(card, asset)).toBe('launch-update.jpg');
   });
 });

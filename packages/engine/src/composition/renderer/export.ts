@@ -5,15 +5,13 @@ import type { MantleCanvas } from '../canvas';
 const EXPORT_MIME_TYPES: Record<MantleExportFormat, string> = {
   png: 'image/png',
   jpeg: 'image/jpeg',
-  webp: 'image/webp',
-  avif: 'image/avif'
+  webp: 'image/webp'
 };
 
 const EXPORT_EXTENSIONS: Record<MantleExportFormat, string> = {
   png: 'png',
   jpeg: 'jpg',
-  webp: 'webp',
-  avif: 'avif'
+  webp: 'webp'
 };
 
 export function mimeTypeForExportFormat(format: MantleExportFormat): string {
@@ -25,8 +23,10 @@ export function extensionForExportFormat(format: MantleExportFormat): string {
 }
 
 export function safeExportFileName(name: string): string {
+  const baseName = name.replace(/\.(png|jpe?g|webp)$/i, '');
+
   return (
-    name
+    baseName
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')

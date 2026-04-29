@@ -22,6 +22,16 @@ describe('MantleProjectSchema', () => {
     expect(project.activeCardId).toBe(project.cards[0]?.id);
   });
 
+  it('accepts a custom export filename', () => {
+    const card = createMantleCard();
+    card.export = {
+      ...card.export,
+      fileName: 'launch-update'
+    };
+
+    expect(MantleCardSchema.parse(card).export.fileName).toBe('launch-update');
+  });
+
   it('accepts a social card with an imported screenshot asset', () => {
     const project = createMantleProject();
     const asset = {

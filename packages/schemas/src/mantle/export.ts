@@ -13,7 +13,8 @@ export const MantleExportFormatSchema = z.enum(MANTLE_EXPORT_FORMATS);
 export const MantleExportSettingsSchema = z.object({
   format: MantleExportFormatSchema,
   scale: z.number().min(1).max(5),
-  quality: z.number().min(0).max(1).optional()
+  quality: z.number().min(0).max(1).optional(),
+  fileName: z.string().trim().min(1).max(120).optional()
 }).strict();
 
 export const MantleExportResultSchema = z.object({
