@@ -15,7 +15,15 @@ import {
   DEFAULT_MANTLE_TARGETS,
   createMantleProject
 } from '@mantle/schemas/defaults';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties
+} from 'react';
+import { createPortal } from 'react-dom';
 
 import { Icon } from '../components/Icon';
 import { InspectorPanel } from '../features/inspector/InspectorPanel';
@@ -85,6 +93,9 @@ type AppFailure = Readonly<{
   message: string;
 }>;
 
+type ExportSettingsMode = 'copy' | 'download';
+type ExportSliderFillStyle = CSSProperties & Record<'--export-slider-fill', string>;
+
 type StyleRailItem =
   | (StylePreset & { kind: 'preset' })
   | {
@@ -120,6 +131,121 @@ function errorDetail(error: AppFailure): string {
 
 function canWriteClipboardImage(): boolean {
   return 'ClipboardItem' in window && Boolean(navigator.clipboard?.write);
+}
+
+const EXPORT_FORMAT_OPTIONS: Array<{ value: MantleExportFormat; label: string }> = [
+  { value: 'png', label: 'PNG' },
+  { value: 'jpeg', label: 'JPEG' },
+  { value: 'webp', label: 'WebP' }
+];
+
+function decimalPlaces(value: number): number {
+  const text = String(value);
+  if (!text.includes('.')) return 0;
+  return text.split('.')[1]?.length ?? 0;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function snapNumericValue(value: number, min: number, max: number, step: number): number {
+  const clamped = clampNumber(value, min, max);
+  if (step <= 0) return clamped;
+
+  const snapped = Math.round((clamped - min) / step) * step + min;
+  const precision = Math.max(decimalPlaces(step), decimalPlaces(min), decimalPlaces(max)) + 2;
+  return clampNumber(Number(snapped.toFixed(precision)), min, max);
+}
+
+function formatNumericDraft(value: number, displayScale: number): string {
+  const scaled = value * displayScale;
+  if (Number.isInteger(scaled)) return String(scaled);
+  return String(Number(scaled.toFixed(2)));
+}
+
+function ExportSlider({
+  label,
+  min,
+  max,
+  step,
+  value,
+  displayScale = 1,
+  suffix = '',
+  onChange
+}: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  displayScale?: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(formatNumericDraft(value, displayScale));
+  const span = max - min;
+  const fillPercent = span > 0 ? clampNumber((value - min) / span, 0, 1) * 100 : 0;
+  const fillStyle: ExportSliderFillStyle = {
+    '--export-slider-fill': `${fillPercent}%`
+  };
+
+  useEffect(() => {
+    setDraft(formatNumericDraft(value, displayScale));
+  }, [displayScale, value]);
+
+  const commitDraft = () => {
+    const parsed = Number.parseFloat(draft.replace(',', '.'));
+    if (Number.isFinite(parsed)) {
+      onChange(snapNumericValue(parsed / displayScale, min, max, step));
+    } else {
+      setDraft(formatNumericDraft(value, displayScale));
+    }
+  };
+
+  return (
+    <label className={styles.exportSlider}>
+      <span className={styles.exportControlHead}>
+        <span>{label}</span>
+        <span className={styles.exportValueControl}>
+          <input
+            aria-label={`${label} value`}
+            inputMode="decimal"
+            max={max * displayScale}
+            min={min * displayScale}
+            step={step * displayScale}
+            type="number"
+            value={draft}
+            onBlur={commitDraft}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur();
+              }
+              if (event.key === 'Escape') {
+                setDraft(formatNumericDraft(value, displayScale));
+                event.currentTarget.blur();
+              }
+            }}
+          />
+          {suffix ? <span>{suffix}</span> : null}
+        </span>
+      </span>
+      <input
+        aria-label={label}
+        className={styles.exportSliderInput}
+        max={max}
+        min={min}
+        step={step}
+        style={fillStyle}
+        type="range"
+        value={value}
+        onChange={(event) =>
+          onChange(snapNumericValue(Number(event.currentTarget.value), min, max, step))
+        }
+      />
+    </label>
+  );
 }
 
 function isMissingRenderableSource(
@@ -201,7 +327,7 @@ function exportFailureNotice(
     return {
       tone: 'error',
       title: `${format.toUpperCase()} unsupported`,
-      detail: 'Choose PNG, JPEG or WebP for this browser.'
+      detail: 'Choose PNG or JPEG for this browser.'
     };
   }
 
@@ -245,9 +371,14 @@ export function App() {
   }));
   const [isDragging, setIsDragging] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
+  const [exportSettingsMode, setExportSettingsMode] =
+    useState<ExportSettingsMode>('download');
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const projectInputRef = useRef<HTMLInputElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const exportPopoverRef = useRef<HTMLDivElement | null>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const noticeTimerRef = useRef<number | null>(null);
   const imageImportIntentRef = useRef<ImageImportIntent>({ mode: 'auto' });
@@ -303,6 +434,31 @@ export function App() {
     };
   }, [clearNoticeTimer]);
 
+  useEffect(() => {
+    if (!exportSettingsOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportSettingsOpen(false);
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !exportMenuRef.current?.contains(target) &&
+        !exportPopoverRef.current?.contains(target)
+      ) {
+        setExportSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [exportSettingsOpen]);
+
   const activeCard = useMemo(
     () =>
       project.cards.find((card) => card.id === project.activeCardId) ??
@@ -342,6 +498,11 @@ export function App() {
       ? activeCard.background.imageAssetId
       : undefined;
   const activeSourceMissing = activeMissingSourceAssetId != null;
+
+  const openExportSettings = useCallback((mode: ExportSettingsMode) => {
+    setExportSettingsMode(mode);
+    setExportSettingsOpen(true);
+  }, []);
 
   const openImagePicker = useCallback((intent: ImageImportIntent = { mode: 'auto' }) => {
     imageImportIntentRef.current = intent;
@@ -745,24 +906,35 @@ export function App() {
           card.id === cardForExport.id ? cardForExport : card
         )
       };
+
+      if (copyToClipboard) {
+        const clipboardMimeType = 'image/png';
+        const clipboardBlob = exportMantleProjectCard({
+          project: projectForExport,
+          cardId: cardForExport.id
+        }).then((result) => result.blob);
+
+        await navigator.clipboard.write([
+          new ClipboardItem({ [clipboardMimeType]: clipboardBlob })
+        ]);
+        showNotice({
+          tone: 'success',
+          title: 'Copied PNG',
+          detail: 'The rendered image is in your clipboard.'
+        });
+        return;
+      }
+
       const result = await exportMantleProjectCard({
         project: projectForExport,
         cardId: cardForExport.id
       });
 
-      if (copyToClipboard && 'ClipboardItem' in window && navigator.clipboard?.write) {
-        await navigator.clipboard.write([
-          new ClipboardItem({ [result.mimeType]: result.blob })
-        ]);
-      } else {
-        downloadBlob(result);
-      }
+      downloadBlob(result);
       showNotice({
         tone: 'success',
-        title: copyToClipboard ? 'Copied PNG' : 'Export ready',
-        detail: copyToClipboard
-          ? 'The rendered image is in your clipboard.'
-          : `${result.filename} downloaded.`
+        title: 'Export ready',
+        detail: `${result.filename} downloaded.`
       });
     } catch (error) {
       showNotice(
@@ -810,6 +982,12 @@ export function App() {
       export: { ...activeCard.export, ...patch }
     });
   };
+  const exportWidth = activeTarget.width * activeCard.export.scale;
+  const exportHeight = activeTarget.height * activeCard.export.scale;
+  const showExportQuality = activeCard.export.format !== 'png';
+  const exportFileNamePlaceholder = activeAsset?.name
+    ? fileBaseName(activeAsset.name)
+    : activeCard.name;
 
   return (
     <div
@@ -900,26 +1078,160 @@ export function App() {
             </button>
           </div>
 
-          <button
-            type="button"
-            className={styles.ghostButton}
-            disabled={isExporting}
-            onClick={() => void handleExport(true)}
-            title="Copy PNG to clipboard"
-          >
-            <Icon name="copy" size={14} aria-hidden="true" />
-            <span>Copy PNG</span>
-          </button>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={isExporting}
-            onClick={() => void handleExport(false)}
-            title="Download image"
-          >
-            <Icon name="download" size={14} aria-hidden="true" />
-            <span>{isExporting ? 'Exporting…' : 'Download'}</span>
-          </button>
+          <div className={styles.exportMenu} ref={exportMenuRef}>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              disabled={isExporting}
+              onClick={() => openExportSettings('copy')}
+              title="Copy PNG to clipboard"
+            >
+              <Icon name="copy" size={14} aria-hidden="true" />
+              <span>Copy PNG</span>
+            </button>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isExporting}
+              onClick={() => openExportSettings('download')}
+              title="Download image"
+            >
+              <Icon name="download" size={14} aria-hidden="true" />
+              <span>{isExporting ? 'Exporting…' : 'Download'}</span>
+            </button>
+
+            {exportSettingsOpen ? createPortal(
+              <div
+                ref={exportPopoverRef}
+                className={styles.exportPopover}
+                role="dialog"
+                aria-label={
+                  exportSettingsMode === 'copy'
+                    ? 'Copy PNG settings'
+                    : 'Download settings'
+                }
+              >
+                <div className={styles.exportPopoverHeader}>
+                  <div>
+                    <span className={styles.exportPopoverTitle}>
+                      {exportSettingsMode === 'copy' ? 'Copy PNG' : 'Download'}
+                    </span>
+                    <span className={styles.exportPopoverHint}>
+                      {exportSettingsMode === 'copy'
+                        ? 'Clipboard uses PNG. Scale controls copied resolution.'
+                        : 'Choose file name, format, and quality.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.exportCloseButton}
+                    onClick={() => setExportSettingsOpen(false)}
+                    title="Close export settings"
+                  >
+                    <Icon name="close" size={13} aria-hidden="true" />
+                  </button>
+                </div>
+
+                {exportSettingsMode === 'download' ? (
+                  <>
+                    <label className={styles.exportTextField}>
+                      <span>Filename</span>
+                      <input
+                        value={activeCard.export.fileName ?? ''}
+                        placeholder={exportFileNamePlaceholder}
+                        onChange={(event) => {
+                          const fileName = event.currentTarget.value;
+                          updateActiveExport({
+                            fileName: fileName.trim() ? fileName : undefined
+                          });
+                        }}
+                      />
+                    </label>
+
+                    <div
+                      className={styles.exportSegmented}
+                      role="group"
+                      aria-label="Export format"
+                    >
+                      {EXPORT_FORMAT_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={
+                            activeCard.export.format === option.value
+                              ? `${styles.exportSegmentedOption} ${styles.exportSegmentedOptionActive}`
+                              : styles.exportSegmentedOption
+                          }
+                          onClick={() => updateActiveExport({ format: option.value })}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+
+                <ExportSlider
+                  label="Scale"
+                  min={1}
+                  max={5}
+                  step={1}
+                  value={activeCard.export.scale}
+                  suffix="×"
+                  onChange={(scale) => updateActiveExport({ scale })}
+                />
+
+                <div className={styles.exportSummary}>
+                  <span>Output size</span>
+                  <strong>{exportWidth} × {exportHeight}</strong>
+                </div>
+
+                {exportSettingsMode === 'download' && showExportQuality ? (
+                  <ExportSlider
+                    label="Quality"
+                    min={0.5}
+                    max={1}
+                    step={0.02}
+                    value={activeCard.export.quality ?? 0.92}
+                    displayScale={100}
+                    suffix="%"
+                    onChange={(quality) => updateActiveExport({ quality })}
+                  />
+                ) : null}
+
+                <div className={styles.exportPopoverActions}>
+                  {exportSettingsMode === 'copy' ? (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={isExporting}
+                      onClick={() => {
+                        setExportSettingsOpen(false);
+                        void handleExport(true);
+                      }}
+                    >
+                      <Icon name="copy" size={14} aria-hidden="true" />
+                      <span>Copy PNG</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={isExporting}
+                      onClick={() => {
+                        setExportSettingsOpen(false);
+                        void handleExport(false);
+                      }}
+                    >
+                      <Icon name="download" size={14} aria-hidden="true" />
+                      <span>{isExporting ? 'Exporting…' : 'Download'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>,
+              document.body
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -1111,11 +1423,6 @@ export function App() {
           onRadiusChange={(cornerRadius) => updateActiveFrame({ cornerRadius })}
           onFrameShadowChange={updateActiveFrame}
           onTextChange={updateActiveText}
-          onExportFormatChange={(format) => updateActiveExport({ format })}
-          onExportScaleChange={(scale) => updateActiveExport({ scale })}
-          onExportQualityChange={(quality) =>
-            updateActiveExport({ quality })
-          }
         />
       </main>
 

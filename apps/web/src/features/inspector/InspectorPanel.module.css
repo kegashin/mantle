@@ -221,7 +221,8 @@
   font-weight: 500;
 }
 
-.sliderValue {
+.sliderValueButton,
+.sliderValueInput {
   padding: 2px 8px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
@@ -237,8 +238,26 @@
     color var(--dur-fast) var(--ease-out);
 }
 
-.slider:hover .sliderValue,
-.slider:focus-within .sliderValue {
+.sliderValueButton {
+  cursor: text;
+}
+
+.sliderValueInput {
+  width: 72px;
+  min-width: 0;
+  outline: none;
+  appearance: textfield;
+}
+
+.sliderValueInput::-webkit-inner-spin-button,
+.sliderValueInput::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.slider:hover .sliderValueButton,
+.slider:focus-within .sliderValueButton,
+.sliderValueInput:focus {
   border-color: var(--color-hairline-strong);
   background: rgba(0, 0, 0, 0.42);
 }

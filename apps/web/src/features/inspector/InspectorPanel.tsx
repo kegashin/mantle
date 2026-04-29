@@ -9,7 +9,6 @@ import type {
   MantleCard,
   MantleBackgroundParamId,
   MantleBackgroundPresetId,
-  MantleExportFormat,
   MantleFrameBoxStyle,
   MantleFramePreset,
   MantleRenderableAsset,
@@ -88,9 +87,6 @@ type InspectorPanelProps = {
     >
   ) => void;
   onTextChange: (patch: Partial<MantleCard['text']>) => void;
-  onExportFormatChange: (value: MantleExportFormat) => void;
-  onExportScaleChange: (value: number) => void;
-  onExportQualityChange: (value: number) => void;
 };
 
 type SliderFillStyle = CSSProperties & Record<'--slider-fill', string>;
@@ -156,20 +152,37 @@ function resolveTextFontValue(
   return isMantleTextFont(value) ? value : fallback;
 }
 
-const EXPORT_FORMATS: Array<{ value: MantleExportFormat; label: string }> = [
-  { value: 'png', label: 'PNG' },
-  { value: 'jpeg', label: 'JPEG' },
-  { value: 'webp', label: 'WebP' },
-  { value: 'avif', label: 'AVIF' }
-];
-
 const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
 const formatTurnsAsDegrees = (value: number) => `${Math.round(value * 360)}°`;
 const formatPx = (value: number) => `${value}px`;
 const formatFractionalPx = (value: number) =>
   `${Number.isInteger(value) ? value : value.toFixed(1)}px`;
-const formatMultiplier = (value: number) => `${value}×`;
 const formatPreciseMultiplier = (value: number) => `${value.toFixed(2)}×`;
+
+function decimalPlaces(value: number): number {
+  const text = String(value);
+  if (!text.includes('.')) return 0;
+  return text.split('.')[1]?.length ?? 0;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function snapSliderValue(value: number, min: number, max: number, step: number): number {
+  const clamped = clampNumber(value, min, max);
+  if (step <= 0) return clamped;
+
+  const snapped = Math.round((clamped - min) / step) * step + min;
+  const precision = Math.max(decimalPlaces(step), decimalPlaces(min), decimalPlaces(max)) + 2;
+  return clampNumber(Number(snapped.toFixed(precision)), min, max);
+}
+
+function formatSliderEditValue(value: number, scale: number): string {
+  const scaled = value * scale;
+  if (Number.isInteger(scaled)) return String(scaled);
+  return String(Number(scaled.toFixed(2)));
+}
 
 function formatBackgroundParamValue(
   paramId: MantleBackgroundParamId,
@@ -366,6 +379,7 @@ function Slider({
   step,
   value,
   format = (v) => String(v),
+  editScale = 1,
   onChange
 }: {
   label: string;
@@ -374,19 +388,73 @@ function Slider({
   step: number;
   value: number;
   format?: (value: number) => string;
+  editScale?: number;
   onChange: (value: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(formatSliderEditValue(value, editScale));
   const span = max - min;
   const fillPercent = span > 0 ? Math.min(1, Math.max(0, (value - min) / span)) * 100 : 0;
   const sliderFillStyle: SliderFillStyle = {
     '--slider-fill': `${fillPercent}%`
   };
+  const editMin = min * editScale;
+  const editMax = max * editScale;
+  const editStep = step * editScale;
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(formatSliderEditValue(value, editScale));
+    }
+  }, [editScale, editing, value]);
+
+  const commitDraft = () => {
+    const parsed = Number.parseFloat(draft.replace(',', '.'));
+    if (Number.isFinite(parsed)) {
+      onChange(snapSliderValue(parsed / editScale, min, max, step));
+    } else {
+      setDraft(formatSliderEditValue(value, editScale));
+    }
+    setEditing(false);
+  };
 
   return (
-    <label className={styles.slider}>
+    <div className={styles.slider}>
       <span className={styles.sliderHead}>
         <span>{label}</span>
-        <span className={styles.sliderValue}>{format(value)}</span>
+        {editing ? (
+          <input
+            aria-label={`${label} value`}
+            autoFocus
+            className={styles.sliderValueInput}
+            inputMode="decimal"
+            max={editMax}
+            min={editMin}
+            step={editStep}
+            type="number"
+            value={draft}
+            onBlur={commitDraft}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur();
+              }
+              if (event.key === 'Escape') {
+                setDraft(formatSliderEditValue(value, editScale));
+                setEditing(false);
+              }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            className={styles.sliderValueButton}
+            onClick={() => setEditing(true)}
+            title="Set exact value"
+          >
+            {format(value)}
+          </button>
+        )}
       </span>
       <span className={styles.sliderRow}>
         <span className={styles.sliderTicks} aria-hidden="true">
@@ -404,10 +472,13 @@ function Slider({
           step={step}
           value={value}
           style={sliderFillStyle}
-          onChange={(event) => onChange(Number(event.currentTarget.value))}
+          aria-label={label}
+          onChange={(event) =>
+            onChange(snapSliderValue(Number(event.currentTarget.value), min, max, step))
+          }
         />
       </span>
-    </label>
+    </div>
   );
 }
 
@@ -463,13 +534,9 @@ export function InspectorPanel({
   onFrameContentPaddingChange,
   onRadiusChange,
   onFrameShadowChange,
-  onTextChange,
-  onExportFormatChange,
-  onExportScaleChange,
-  onExportQualityChange
+  onTextChange
 }: InspectorPanelProps) {
   const palette = card.background.palette;
-  const showQuality = card.export.format !== 'png';
   const activeTarget = useMemo(
     () => targets.find((target) => target.id === card.targetId) ?? targets[0],
     [card.targetId, targets]
@@ -508,8 +575,6 @@ export function InspectorPanel({
     [card.background]
   );
   const activeFrameBoxStyle = resolveFrameBoxStyle(card.frame);
-  const exportWidth = activeTarget ? activeTarget.width * card.export.scale : 0;
-  const exportHeight = activeTarget ? activeTarget.height * card.export.scale : 0;
   const activeFrameChromePreset = card.frame.preset;
   const isGlassMaterial = activeFrameBoxStyle === 'glass-panel';
   const shadowSettings = resolveFrameShadowSettings(card.frame, palette);
@@ -641,6 +706,7 @@ export function InspectorPanel({
                 step={param.step}
                 value={card.background.params?.[param.id] ?? param.defaultValue}
                 format={(value) => formatBackgroundParamValue(param.id, value)}
+                editScale={param.id === 'angle' ? 360 : 100}
                 onChange={(value) => onBackgroundParamChange(param.id, value)}
               />
             ))}
@@ -758,6 +824,7 @@ export function InspectorPanel({
             step={0.01}
             value={card.frame.boxOpacity ?? CSS_GLASS_FRAME_DEFAULTS.boxOpacity}
             format={formatPercent}
+            editScale={100}
             onChange={(boxOpacity) => onFrameMaterialChange({ boxOpacity })}
           />
         ) : null}
@@ -792,6 +859,7 @@ export function InspectorPanel({
               CSS_GLASS_FRAME_DEFAULTS.glassOutlineOpacity
             }
             format={formatPercent}
+            editScale={100}
             onChange={(glassOutlineOpacity) =>
               onFrameMaterialChange({ glassOutlineOpacity })
             }
@@ -854,6 +922,7 @@ export function InspectorPanel({
           step={0.02}
           value={shadowSettings.strength}
           format={formatPercent}
+          editScale={100}
           onChange={(shadowStrength) => updateShadowSettings({ shadowStrength })}
         />
         <Slider
@@ -863,6 +932,7 @@ export function InspectorPanel({
           step={0.02}
           value={shadowSettings.softness}
           format={formatPercent}
+          editScale={100}
           onChange={(shadowSoftness) => updateShadowSettings({ shadowSoftness })}
         />
         <Slider
@@ -872,6 +942,7 @@ export function InspectorPanel({
           step={0.02}
           value={shadowSettings.distance}
           format={formatPercent}
+          editScale={100}
           onChange={(shadowDistance) => updateShadowSettings({ shadowDistance })}
         />
         <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
@@ -1077,6 +1148,7 @@ export function InspectorPanel({
               step={0.02}
               value={Math.max(textWidthMin, Math.min(card.text.width, textWidthMax))}
               format={formatPercent}
+              editScale={100}
               onChange={(width) => onTextChange({ width })}
             />
             <Slider
@@ -1098,41 +1170,6 @@ export function InspectorPanel({
         ) : null}
       </Section>
 
-      <Section icon="download" title="Export">
-        <Segmented
-          value={card.export.format}
-          options={EXPORT_FORMATS}
-          onChange={onExportFormatChange}
-        />
-        <Slider
-          label="Scale"
-          min={1}
-          max={5}
-          step={1}
-          value={card.export.scale}
-          format={formatMultiplier}
-          onChange={onExportScaleChange}
-        />
-        {activeTarget ? (
-          <div className={styles.exportSummary}>
-            <span>Output size</span>
-            <strong>
-              {exportWidth} × {exportHeight}
-            </strong>
-          </div>
-        ) : null}
-        {showQuality ? (
-          <Slider
-            label="Quality"
-            min={0.5}
-            max={1}
-            step={0.02}
-            value={card.export.quality ?? 0.92}
-            format={formatPercent}
-            onChange={onExportQualityChange}
-          />
-        ) : null}
-      </Section>
     </aside>
   );
 }
