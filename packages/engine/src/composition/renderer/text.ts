@@ -161,15 +161,15 @@ function resolveTextFontStack(font: MantleTextFont): string {
     case 'system':
       return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
     case 'display':
-      return '"Inter", "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif';
+      return '"Fraunces Variable", "Fraunces", "New York", "Iowan Old Style", Georgia, serif';
     case 'rounded':
-      return 'ui-rounded, "SF Pro Rounded", "Avenir Next Rounded Std", "Nunito", system-ui, sans-serif';
+      return '"Nunito Variable", "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
     case 'serif':
       return 'ui-serif, Georgia, "Times New Roman", serif';
     case 'editorial':
       return '"Instrument Serif", "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
     case 'slab':
-      return 'Rockwell, "Roboto Slab", "Courier New", ui-serif, serif';
+      return '"Roboto Slab Variable", "Roboto Slab", Rockwell, "Courier New", ui-serif, serif';
     case 'mono':
       return '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
     case 'code':
