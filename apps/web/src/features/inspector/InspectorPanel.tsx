@@ -91,6 +91,10 @@ type InspectorPanelProps = {
 
 type SliderFillStyle = CSSProperties & Record<'--slider-fill', string>;
 type IconChoiceMeta = { label: string; icon: IconName };
+type FrameShellGroup = {
+  label: string;
+  values: MantleFramePreset[];
+};
 
 const BOX_STYLE_LABELS: Record<MantleFrameBoxStyle, IconChoiceMeta> = {
   none: { label: 'None', icon: 'image' },
@@ -107,6 +111,21 @@ const CHROME_LABELS: Record<MantleFramePreset, IconChoiceMeta> = {
   'code-editor': { label: 'Code editor', icon: 'sliders' },
   'document-page': { label: 'Document', icon: 'film' }
 };
+
+const FRAME_SHELL_GROUPS: FrameShellGroup[] = [
+  {
+    label: 'Basic',
+    values: ['none']
+  },
+  {
+    label: 'Windows',
+    values: ['minimal-browser', 'macos-window', 'windows-window', 'terminal-window', 'code-editor']
+  },
+  {
+    label: 'Editorial',
+    values: ['document-page']
+  }
+];
 
 const ALIGN_OPTIONS: Array<{ value: 'left' | 'center' | 'right'; label: string }> = [
   { value: 'left', label: 'Left' },
@@ -368,6 +387,36 @@ function IconChoiceGrid<T extends string>({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function FrameShellGrid({
+  activeValue,
+  onChange
+}: {
+  activeValue: MantleFramePreset;
+  onChange: (next: MantleFramePreset) => void;
+}) {
+  const knownValues = new Set(FRAME_CHROME_PRESET_IDS);
+  const groups = FRAME_SHELL_GROUPS.map((group) => ({
+    ...group,
+    values: group.values.filter((value) => knownValues.has(value))
+  })).filter((group) => group.values.length > 0);
+
+  return (
+    <div className={styles.frameShellGroups}>
+      {groups.map((group) => (
+        <div key={group.label} className={styles.frameShellGroup}>
+          <div className={styles.frameSubGroupLabel}>{group.label}</div>
+          <IconChoiceGrid
+            activeValue={activeValue}
+            values={group.values}
+            labels={CHROME_LABELS}
+            onChange={onChange}
+          />
+        </div>
+      ))}
     </div>
   );
 }
@@ -865,11 +914,9 @@ export function InspectorPanel({
             }
           />
         ) : null}
-        <div className={styles.frameGroupLabel}>Chrome</div>
-        <IconChoiceGrid
+        <div className={styles.frameGroupLabel}>Presentation</div>
+        <FrameShellGrid
           activeValue={activeFrameChromePreset}
-          values={FRAME_CHROME_PRESET_IDS}
-          labels={CHROME_LABELS}
           onChange={onFramePresetChange}
         />
         {activeFrameChromePreset !== 'none' ? (

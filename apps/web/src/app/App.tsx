@@ -374,6 +374,10 @@ export function App() {
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
   const [exportSettingsMode, setExportSettingsMode] =
     useState<ExportSettingsMode>('download');
+  const [exportPopoverPosition, setExportPopoverPosition] = useState<{
+    top: number;
+    right: number;
+  }>({ top: 56, right: 18 });
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const projectInputRef = useRef<HTMLInputElement | null>(null);
@@ -437,6 +441,21 @@ export function App() {
   useEffect(() => {
     if (!exportSettingsOpen) return;
 
+    // Anchor the popover to the right edge of the export menu cluster so it
+    // visually belongs to the trigger buttons instead of floating in a fixed
+    // top-right slot. Re-runs on resize / scroll to track the trigger.
+    const updatePosition = () => {
+      const menu = exportMenuRef.current;
+      if (!menu) return;
+      const rect = menu.getBoundingClientRect();
+      setExportPopoverPosition({
+        top: rect.bottom + 8,
+        right: Math.max(12, window.innerWidth - rect.right)
+      });
+    };
+
+    updatePosition();
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setExportSettingsOpen(false);
     };
@@ -453,9 +472,13 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
     };
   }, [exportSettingsOpen]);
 
@@ -1110,6 +1133,10 @@ export function App() {
                     ? 'Copy PNG settings'
                     : 'Download settings'
                 }
+                style={{
+                  top: `${exportPopoverPosition.top}px`,
+                  right: `${exportPopoverPosition.right}px`
+                }}
               >
                 <div className={styles.exportPopoverHeader}>
                   <div>

@@ -651,6 +651,22 @@
   gap: 6px;
 }
 
+.frameShellGroups {
+  display: grid;
+  gap: 10px;
+}
+
+.frameShellGroup {
+  display: grid;
+  gap: 6px;
+}
+
+.frameSubGroupLabel {
+  color: var(--color-text-muted);
+  font-size: var(--type-xxs);
+  letter-spacing: 0;
+}
+
 .frameButton {
   display: inline-flex;
   align-items: center;
