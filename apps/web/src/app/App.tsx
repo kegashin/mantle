@@ -36,9 +36,7 @@ import {
 } from '../lib/frameMaterial';
 import styles from './App.module.css';
 import {
-  parseProjectFile,
-  safeFileName,
-  serializeProjectForSave
+  safeFileName
 } from './projectPersistence';
 import {
   createAssetFromFile,
@@ -69,9 +67,18 @@ import {
   normalizeSurfaceDimension,
   upsertCustomTargetForActiveCard
 } from './surfaceSizing';
+import {
+  USER_PRESET_ACCEPT,
+  createUserStylePreset,
+  loadUserStylePresets,
+  mergeUserStylePresets,
+  parseUserPresetFiles,
+  saveUserStylePresets,
+  serializeUserStylePreset,
+  type UserStylePreset
+} from './userPresets';
 
 const ACCEPTED_INPUT = 'image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp';
-const ACCEPTED_PROJECT = '.mantle.json,application/json';
 const SUPPORTED_INPUT_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
@@ -79,6 +86,7 @@ const SUPPORTED_INPUT_MIME_TYPES = new Set([
 ]);
 const SUPPORTED_INPUT_EXTENSION_PATTERN = /\.(png|jpe?g|webp)$/i;
 const SUPPORTED_INPUT_FORMAT_HINT = 'PNG, JPG, or WebP';
+const DEFAULT_PROJECT_NAME = 'Mantle Draft';
 
 type AppNoticeTone = 'success' | 'info' | 'warning' | 'error';
 
@@ -95,6 +103,21 @@ type AppFailure = Readonly<{
 
 type ExportSettingsMode = 'copy' | 'download';
 type ExportSliderFillStyle = CSSProperties & Record<'--export-slider-fill', string>;
+type PresetRailMode = 'built-in' | 'saved';
+type MantleFileSystemFileHandle = {
+  kind: 'file';
+  getFile: () => Promise<File>;
+};
+type MantleFileSystemDirectoryHandle = {
+  kind: 'directory';
+  values: () => AsyncIterable<MantleFileSystemFileHandle | MantleFileSystemDirectoryHandle>;
+};
+type MantleDirectoryPickerWindow = Window & {
+  showDirectoryPicker?: (options?: {
+    id?: string;
+    mode?: 'read' | 'readwrite';
+  }) => Promise<MantleFileSystemDirectoryHandle>;
+};
 
 type StyleRailItem =
   | (StylePreset & { kind: 'preset' })
@@ -270,6 +293,54 @@ function isSupportedSourceImage(file: File): boolean {
   );
 }
 
+function isUserPresetFile(file: File): boolean {
+  return /\.json$/i.test(file.name);
+}
+
+async function collectUserPresetFilesFromDirectory(
+  directory: MantleFileSystemDirectoryHandle,
+  depth = 0
+): Promise<File[]> {
+  if (depth > 3) return [];
+
+  const files: File[] = [];
+  for await (const entry of directory.values()) {
+    if (entry.kind === 'file') {
+      const file = await entry.getFile();
+      if (isUserPresetFile(file)) files.push(file);
+      continue;
+    }
+
+    files.push(...(await collectUserPresetFilesFromDirectory(entry, depth + 1)));
+  }
+
+  return files;
+}
+
+async function chooseUserPresetDirectory(): Promise<File[] | undefined> {
+  const pickerWindow = window as MantleDirectoryPickerWindow;
+  if (!pickerWindow.showDirectoryPicker) return undefined;
+
+  const directory = await pickerWindow.showDirectoryPicker({
+    id: 'mantle-user-presets',
+    mode: 'read'
+  });
+  return collectUserPresetFilesFromDirectory(directory);
+}
+
+function titleCaseWords(value: string): string {
+  return value.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
+function humanizeStyleId(value: string | undefined): string {
+  if (!value) return 'Mantle style';
+  return titleCaseWords(value.replace(/[-_]+/g, ' ').trim()) || 'Mantle style';
+}
+
+function stylePresetDraftName(styleName: string): string {
+  return /\bstyle$/i.test(styleName) ? styleName : `${styleName} style`;
+}
+
 function importFailureNotice(
   file: File,
   error?: AppFailure | undefined
@@ -297,14 +368,6 @@ function relinkMissingAssetNotice(kind: 'source' | 'background'): Omit<AppNotice
       kind === 'background'
         ? 'Saved projects keep image metadata only. Relink the local background image before exporting.'
         : 'Saved projects keep image metadata only. Relink the local screenshot to render or export this card.'
-  };
-}
-
-function projectLoadFailureNotice(error: AppFailure): Omit<AppNotice, 'id'> {
-  return {
-    tone: 'error',
-    title: 'Project file could not be opened',
-    detail: errorDetail(error)
   };
 }
 
@@ -365,12 +428,18 @@ function exportFailureNotice(
 export function App() {
   const [project, setProject] = useState<RuntimeMantleProject>(() => ({
     ...createMantleProject({
-      name: 'Mantle Draft',
+      name: DEFAULT_PROJECT_NAME,
       brandName: 'Mantle'
     })
   }));
   const [isDragging, setIsDragging] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [presetRailMode, setPresetRailMode] = useState<PresetRailMode>('built-in');
+  const [userPresets, setUserPresets] = useState<UserStylePreset[]>([]);
+  const [presetDraftOpen, setPresetDraftOpen] = useState(false);
+  const [presetDraftName, setPresetDraftName] = useState('');
+  const [presetDraftDescription, setPresetDraftDescription] = useState('');
+  const [presetImportMenuOpen, setPresetImportMenuOpen] = useState(false);
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
   const [exportSettingsMode, setExportSettingsMode] =
     useState<ExportSettingsMode>('download');
@@ -380,7 +449,9 @@ export function App() {
   }>({ top: 56, right: 18 });
   const [notice, setNotice] = useState<AppNotice | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const projectInputRef = useRef<HTMLInputElement | null>(null);
+  const userPresetInputRef = useRef<HTMLInputElement | null>(null);
+  const userPresetFolderInputRef = useRef<HTMLInputElement | null>(null);
+  const presetImportMenuRef = useRef<HTMLDivElement | null>(null);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const exportPopoverRef = useRef<HTMLDivElement | null>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
@@ -437,6 +508,71 @@ export function App() {
       objectUrlsRef.current.clear();
     };
   }, [clearNoticeTimer]);
+
+  useEffect(() => {
+    const folderInput = userPresetFolderInputRef.current;
+    if (!folderInput) return;
+    folderInput.setAttribute('webkitdirectory', '');
+    folderInput.setAttribute('directory', '');
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadUserStylePresets()
+      .then((presets) => {
+        if (!cancelled) setUserPresets(presets);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        showNotice({
+          tone: 'warning',
+          title: 'Saved styles unavailable',
+          detail: errorDetail(toAppFailure(error))
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showNotice]);
+
+  useEffect(() => {
+    if (!presetImportMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPresetImportMenuOpen(false);
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !presetImportMenuRef.current?.contains(target)) {
+        setPresetImportMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [presetImportMenuOpen]);
+
+  const updateUserPresets = useCallback(
+    (updater: (current: UserStylePreset[]) => UserStylePreset[]) => {
+      setUserPresets((current) => {
+        const nextPresets = updater(current);
+        void saveUserStylePresets(nextPresets).catch((error) => {
+          showNotice({
+            tone: 'warning',
+            title: 'Presets were not saved',
+            detail: errorDetail(toAppFailure(error))
+          });
+        });
+        return nextPresets;
+      });
+    },
+    [showNotice]
+  );
 
   useEffect(() => {
     if (!exportSettingsOpen) return;
@@ -511,6 +647,15 @@ export function App() {
         : undefined,
     [activeCard?.background.imageAssetId, project.assets]
   );
+  const activeStyleName = useMemo(() => {
+    const savedPreset = userPresets.find((preset) => preset.id === activeCard?.themeId);
+    if (savedPreset) return savedPreset.label;
+
+    const builtInPreset = STYLE_PRESETS.find((preset) => preset.id === activeCard?.themeId);
+    if (builtInPreset) return builtInPreset.label;
+
+    return humanizeStyleId(activeCard?.background.presetId);
+  }, [activeCard?.background.presetId, activeCard?.themeId, userPresets]);
   const activeMissingSourceAssetId =
     activeCard?.sourceAssetId && !hasRenderableAssetSource(activeAsset)
       ? activeCard.sourceAssetId
@@ -813,69 +958,160 @@ export function App() {
     }));
   };
 
-  const handleSaveProject = () => {
-    try {
-      const nextRuntimeProject: RuntimeMantleProject = {
-        ...project,
-        updatedAt: new Date().toISOString()
-      };
-      const nextProject = serializeProjectForSave(nextRuntimeProject);
-      setProject(nextRuntimeProject);
-      downloadBlob({
-        blob: new Blob([JSON.stringify(nextProject, null, 2)], {
-          type: 'application/json;charset=utf-8'
-        }),
-        filename: `${safeFileName(nextProject.name)}.mantle.json`,
-        mimeType: 'application/json'
+  const importUserPresetFiles = async (files: readonly File[]) => {
+    const presetFiles = files.filter(isUserPresetFile);
+    if (presetFiles.length === 0) {
+      showNotice({
+        tone: 'warning',
+        title: 'No preset files found',
+        detail: 'Choose .json preset files.'
       });
+      return;
+    }
+
+    const result = await parseUserPresetFiles(presetFiles);
+    if (result.presets.length > 0) {
+      updateUserPresets((current) =>
+        mergeUserStylePresets(current, result.presets)
+      );
+      setPresetRailMode('saved');
+    }
+
+    if (result.presets.length > 0 && result.failures.length === 0) {
       showNotice({
         tone: 'success',
-        title: 'Project saved',
-        detail: `${safeFileName(nextProject.name)}.mantle.json`
+        title: 'Presets imported',
+        detail: `${result.presets.length} preset${result.presets.length === 1 ? '' : 's'} ready.`
+      });
+      return;
+    }
+
+    showNotice({
+      tone: result.presets.length > 0 ? 'warning' : 'error',
+      title:
+        result.presets.length > 0
+          ? 'Some presets were skipped'
+          : 'Presets could not be imported',
+      detail:
+        result.failures[0] ??
+        'The selected files are not valid Mantle preset files.'
+    });
+  };
+
+  const openUserPresetFolder = async () => {
+    try {
+      const files = await chooseUserPresetDirectory();
+      if (files) {
+        await importUserPresetFiles(files);
+        return;
+      }
+    } catch (error) {
+      const failure = toAppFailure(error);
+      if (!/abort/i.test(failure.message)) {
+        showNotice({
+          tone: 'warning',
+          title: 'Folder picker unavailable',
+          detail: 'Use the fallback folder picker instead.'
+        });
+      } else {
+        return;
+      }
+    }
+
+    userPresetFolderInputRef.current?.click();
+  };
+
+  const createPresetFromActiveCard = (name: string, description?: string) => {
+    if (!activeCard) {
+      throw new Error('No active card is available.');
+    }
+
+    return createUserStylePreset({
+      name,
+      description,
+      background: cloneBackground(activeCard.background),
+      frame: cloneFrame(activeCard.frame),
+      text: cloneText(activeCard.text),
+      sourceName: 'Saved style'
+    });
+  };
+
+  const openPresetDraft = () => {
+    if (!activeCard) return;
+    if (activeCard.background.presetId === 'image-fill') {
+      showNotice({
+        tone: 'warning',
+        title: 'Style cannot be saved yet',
+        detail: 'Image backgrounds are not portable presets yet. Choose a generated background first.'
+      });
+      return;
+    }
+
+    setPresetRailMode('saved');
+    setPresetDraftName(stylePresetDraftName(activeStyleName));
+    setPresetDraftDescription('');
+    setPresetDraftOpen(true);
+  };
+
+  const saveCurrentStylePreset = () => {
+    const name = presetDraftName.trim();
+    if (!name) {
+      showNotice({
+        tone: 'warning',
+        title: 'Preset needs a name',
+        detail: 'Add a short name before saving this style.'
+      });
+      return;
+    }
+
+    try {
+      const preset = createPresetFromActiveCard(name, presetDraftDescription);
+      updateUserPresets((current) => mergeUserStylePresets(current, [preset]));
+      setPresetDraftOpen(false);
+      showNotice({
+        tone: 'success',
+        title: 'Style saved',
+        detail: `${preset.label} is in Saved styles.`
       });
     } catch (error) {
       showNotice({
         tone: 'error',
-        title: 'Project could not be saved',
+        title: 'Style could not be saved',
         detail: errorDetail(toAppFailure(error))
       });
     }
   };
 
-  const handleLoadProject = async (file: File) => {
+  const exportUserPreset = (preset: UserStylePreset) => {
     try {
-      const loadedProject = await parseProjectFile(file);
-      const runtimeProject: RuntimeMantleProject = loadedProject;
-      revokeProjectObjectUrls(project);
-      setProject(runtimeProject);
-      const activeCard = runtimeProject.cards.find(
-        (card) => card.id === runtimeProject.activeCardId
-      );
-      const activeAsset = activeCard?.sourceAssetId
-        ? runtimeProject.assets.find((asset) => asset.id === activeCard.sourceAssetId)
-        : undefined;
-      const activeBackgroundAsset = activeCard?.background.imageAssetId
-        ? runtimeProject.assets.find(
-            (asset) => asset.id === activeCard.background.imageAssetId
-          )
-        : undefined;
-      if (activeCard?.sourceAssetId && !hasRenderableAssetSource(activeAsset)) {
-        showNotice(relinkMissingAssetNotice('source'));
-      } else if (
-        activeCard?.background.imageAssetId &&
-        !hasRenderableAssetSource(activeBackgroundAsset)
-      ) {
-        showNotice(relinkMissingAssetNotice('background'));
-      } else {
-        showNotice({
-          tone: 'success',
-          title: 'Project opened',
-          detail: loadedProject.name
-        });
-      }
+      downloadBlob({
+        blob: new Blob([serializeUserStylePreset(preset)], {
+          type: 'application/json;charset=utf-8'
+        }),
+        filename: `${safeFileName(preset.label)}.mantle-preset.json`,
+        mimeType: 'application/json'
+      });
+      showNotice({
+        tone: 'success',
+        title: 'Preset exported',
+        detail: `${safeFileName(preset.label)}.mantle-preset.json`
+      });
     } catch (error) {
-      showNotice(projectLoadFailureNotice(toAppFailure(error)));
+      showNotice({
+        tone: 'error',
+        title: 'Preset could not be exported',
+        detail: errorDetail(toAppFailure(error))
+      });
     }
+  };
+
+  const removeUserPreset = (preset: UserStylePreset) => {
+    updateUserPresets((current) => current.filter((item) => item.id !== preset.id));
+    showNotice({
+      tone: 'info',
+      title: 'Preset removed',
+      detail: preset.label
+    });
   };
 
   const handleExport = async (copyToClipboard = false) => {
@@ -1049,14 +1285,28 @@ export function App() {
         }}
       />
       <input
-        accept={ACCEPTED_PROJECT}
+        accept={USER_PRESET_ACCEPT}
         className={styles.hiddenInput}
-        data-testid="project-file-input"
-        ref={projectInputRef}
+        data-testid="user-preset-file-input"
+        multiple
+        ref={userPresetInputRef}
         type="file"
         onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          if (file) void handleLoadProject(file);
+          const files = Array.from(event.currentTarget.files ?? []);
+          if (files.length > 0) void importUserPresetFiles(files);
+          event.currentTarget.value = '';
+        }}
+      />
+      <input
+        accept={USER_PRESET_ACCEPT}
+        className={styles.hiddenInput}
+        data-testid="user-preset-folder-input"
+        multiple
+        ref={userPresetFolderInputRef}
+        type="file"
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? []);
+          if (files.length > 0) void importUserPresetFiles(files);
           event.currentTarget.value = '';
         }}
       />
@@ -1075,29 +1325,11 @@ export function App() {
             <button
               type="button"
               className={styles.ghostButton}
-              onClick={() => projectInputRef.current?.click()}
-              title="Open Mantle project"
-            >
-              <Icon name="upload" size={14} aria-hidden="true" />
-              <span>Open</span>
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
-              onClick={handleSaveProject}
-              title="Save Mantle project"
-            >
-              <Icon name="download" size={14} aria-hidden="true" />
-              <span>Save</span>
-            </button>
-            <button
-              type="button"
-              className={styles.ghostButton}
               onClick={() => openImagePicker({ mode: 'source-new' })}
               title="Import source image"
             >
               <Icon name="image" size={14} aria-hidden="true" />
-              <span>Image</span>
+              <span>Import image</span>
             </button>
           </div>
 
@@ -1265,66 +1497,242 @@ export function App() {
       <main className={styles.workspace}>
         <aside className={styles.leftRail}>
           <div className={styles.railHeader}>
-            <span className={styles.railTitle}>Style</span>
-            <span className={styles.railHint}>Quick preset</span>
+            <span className={styles.railTitle}>Styles</span>
+            <span className={styles.railHint}>
+              {presetRailMode === 'built-in'
+                ? `${STYLE_PRESETS.length} built-in`
+                : `${userPresets.length} saved`}
+            </span>
           </div>
-          <div className={styles.presetList}>
-            {STYLE_GROUPS.map((group) => {
-              const items = group.presetIds
-                .map((id) => {
-                  if (id === IMAGE_BACKGROUND_STYLE_ID) {
-                    return {
-                      id,
-                      label: 'Image Background',
-                      hint: 'Use your own background image',
-                      kind: 'image' as const
-                    };
-                  }
 
-                  const preset = STYLE_PRESETS.find((item) => item.id === id);
-                  return preset ? { ...preset, kind: 'preset' as const } : undefined;
-                })
-                .filter((item): item is StyleRailItem => item !== undefined);
-              if (items.length === 0) return null;
+          <div className={styles.railModeSwitch} role="tablist" aria-label="Preset source">
+            <button
+              type="button"
+              className={
+                presetRailMode === 'built-in'
+                  ? `${styles.railModeButton} ${styles.railModeButtonActive}`
+                  : styles.railModeButton
+              }
+              onClick={() => setPresetRailMode('built-in')}
+            >
+              Built-in
+            </button>
+            <button
+              type="button"
+              className={
+                presetRailMode === 'saved'
+                  ? `${styles.railModeButton} ${styles.railModeButtonActive}`
+                  : styles.railModeButton
+              }
+              onClick={() => setPresetRailMode('saved')}
+            >
+              Saved
+            </button>
+          </div>
 
-              return (
-                <div key={group.label} className={styles.presetGroup}>
+          {presetRailMode === 'built-in' ? (
+            <div className={styles.presetList}>
+              {STYLE_GROUPS.map((group) => {
+                const items = group.presetIds
+                  .map((id) => {
+                    if (id === IMAGE_BACKGROUND_STYLE_ID) {
+                      return {
+                        id,
+                        label: 'Image Background',
+                        hint: 'Use your own background image',
+                        kind: 'image' as const
+                      };
+                    }
+
+                    const preset = STYLE_PRESETS.find((item) => item.id === id);
+                    return preset ? { ...preset, kind: 'preset' as const } : undefined;
+                  })
+                  .filter((item): item is StyleRailItem => item !== undefined);
+                if (items.length === 0) return null;
+
+                return (
+                  <div key={group.label} className={styles.presetGroup}>
+                    <div className={styles.presetGroupHeader}>
+                      <span>{group.label}</span>
+                      <span className={styles.presetGroupCount}>{items.length}</span>
+                    </div>
+                    <div className={styles.presetGroupGrid}>
+                      {items.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className={
+                            (preset.kind === 'image'
+                              ? activeCard.background.presetId === 'image-fill'
+                              : preset.id === activeCard.themeId)
+                              ? `${styles.presetCard} ${styles.presetCardActive}`
+                              : styles.presetCard
+                          }
+                          onClick={() => {
+                            if (preset.kind === 'image') {
+                              openImagePicker({ mode: 'background-new' });
+                              return;
+                            }
+
+                            applyStylePreset(preset);
+                          }}
+                        >
+                          <span className={styles.presetLabel}>
+                            <span className={styles.presetName}>{preset.label}</span>
+                            <span className={styles.presetHint}>{preset.hint}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={styles.presetList}>
+              <div className={styles.savedPresetHeader}>
+                <div className={styles.savedPresetTools}>
+                  <button
+                    type="button"
+                    className={styles.savedPresetSaveButton}
+                    onClick={openPresetDraft}
+                    title="Save current style"
+                  >
+                    <span>Save</span>
+                  </button>
+                  <div className={styles.savedPresetImport} ref={presetImportMenuRef}>
+                    <button
+                      type="button"
+                      className={styles.savedPresetImportButton}
+                      aria-expanded={presetImportMenuOpen}
+                      onClick={() => setPresetImportMenuOpen((open) => !open)}
+                    >
+                      <Icon name="upload" size={13} aria-hidden="true" />
+                      <span>Import</span>
+                      <Icon name="chevron" size={12} aria-hidden="true" />
+                    </button>
+                    {presetImportMenuOpen ? (
+                      <div className={styles.savedPresetImportMenu} role="menu">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setPresetImportMenuOpen(false);
+                            userPresetInputRef.current?.click();
+                          }}
+                        >
+                          <span>Import from file</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setPresetImportMenuOpen(false);
+                            void openUserPresetFolder();
+                          }}
+                        >
+                          <span>Import from folder</span>
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {presetDraftOpen ? (
+                <div className={styles.presetDraftCard}>
+                  <label>
+                    <span>Name</span>
+                    <input
+                      value={presetDraftName}
+                      placeholder="Preset name"
+                      onChange={(event) => setPresetDraftName(event.currentTarget.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Description</span>
+                    <input
+                      value={presetDraftDescription}
+                      placeholder="Optional"
+                      onChange={(event) =>
+                        setPresetDraftDescription(event.currentTarget.value)
+                      }
+                    />
+                  </label>
+                  <div className={styles.presetDraftActions}>
+                    <button
+                      type="button"
+                      className={styles.userPresetAction}
+                      onClick={() => setPresetDraftOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.userPresetAction}
+                      onClick={saveCurrentStylePreset}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {userPresets.length === 0 ? (
+                <div className={styles.userPresetEmpty}>
+                  <span className={styles.footerKicker}>Saved styles</span>
+                  <span>
+                    Save the current look once, then reuse it without rebuilding the scene.
+                  </span>
+                </div>
+              ) : (
+                <div className={styles.presetGroup}>
                   <div className={styles.presetGroupHeader}>
-                    <span>{group.label}</span>
-                    <span className={styles.presetGroupCount}>{items.length}</span>
+                    <span>Saved</span>
+                    <span className={styles.presetGroupCount}>{userPresets.length}</span>
                   </div>
                   <div className={styles.presetGroupGrid}>
-                    {items.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        className={
-                          (preset.kind === 'image'
-                            ? activeCard.background.presetId === 'image-fill'
-                            : preset.id === activeCard.themeId)
-                            ? `${styles.presetCard} ${styles.presetCardActive}`
-                            : styles.presetCard
-                        }
-                        onClick={() => {
-                          if (preset.kind === 'image') {
-                            openImagePicker({ mode: 'background-new' });
-                            return;
+                    {userPresets.map((preset) => (
+                      <div className={styles.userPresetCard} key={preset.id}>
+                        <button
+                          type="button"
+                          className={
+                            preset.id === activeCard.themeId
+                              ? `${styles.presetCard} ${styles.presetCardActive}`
+                              : styles.presetCard
                           }
-
-                          applyStylePreset(preset);
-                        }}
-                      >
-                        <span className={styles.presetLabel}>
-                          <span className={styles.presetName}>{preset.label}</span>
-                          <span className={styles.presetHint}>{preset.hint}</span>
-                        </span>
-                      </button>
+                          onClick={() => applyStylePreset(preset)}
+                        >
+                          <span className={styles.presetLabel}>
+                            <span className={styles.presetName}>{preset.label}</span>
+                            <span className={styles.presetHint}>{preset.hint}</span>
+                          </span>
+                        </button>
+                        <div className={styles.userPresetCardActions}>
+                          <button
+                            type="button"
+                            className={styles.userPresetIconAction}
+                            onClick={() => exportUserPreset(preset)}
+                            title="Export preset"
+                          >
+                            <Icon name="download" size={12} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.userPresetIconAction} ${styles.userPresetDangerAction}`}
+                            onClick={() => removeUserPreset(preset)}
+                            title="Remove preset"
+                          >
+                            <Icon name="close" size={12} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </div>
+          )}
 
           <div className={styles.railFooter}>
             {activeSourceMissing ? (
@@ -1440,8 +1848,8 @@ export function App() {
             })
           }
           onFrameMaterialChange={updateActiveFrame}
-          onFrameChromeTextChange={(chromeText) =>
-            updateActiveFrame({ chromeText })
+          onFrameShellTextChange={(titleText) =>
+            updateActiveFrame({ chromeText: titleText })
           }
           onPaddingChange={(padding) => updateActiveFrame({ padding })}
           onFrameContentPaddingChange={(contentPadding) =>

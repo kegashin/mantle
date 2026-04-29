@@ -1,6 +1,6 @@
 import {
   FRAME_BOX_STYLE_IDS,
-  FRAME_CHROME_PRESET_IDS,
+  FRAME_CHROME_PRESET_IDS as FRAME_SHELL_PRESET_IDS,
   resolveFrameShadowSettings,
   resolveFrameBoxStyle,
   resolveBackgroundPresetDescriptor
@@ -74,7 +74,7 @@ type InspectorPanelProps = {
       >
     >
   ) => void;
-  onFrameChromeTextChange: (value: string | undefined) => void;
+  onFrameShellTextChange: (value: string | undefined) => void;
   onPaddingChange: (value: number) => void;
   onFrameContentPaddingChange: (value: number) => void;
   onRadiusChange: (value: number) => void;
@@ -102,7 +102,7 @@ const BOX_STYLE_LABELS: Record<MantleFrameBoxStyle, IconChoiceMeta> = {
   'glass-panel': { label: 'Glass', icon: 'sparkle' }
 };
 
-const CHROME_LABELS: Record<MantleFramePreset, IconChoiceMeta> = {
+const SHELL_LABELS: Record<MantleFramePreset, IconChoiceMeta> = {
   none: { label: 'None', icon: 'image' },
   'macos-window': { label: 'macOS window', icon: 'split' },
   'minimal-browser': { label: 'Browser', icon: 'eye' },
@@ -398,7 +398,7 @@ function FrameShellGrid({
   activeValue: MantleFramePreset;
   onChange: (next: MantleFramePreset) => void;
 }) {
-  const knownValues = new Set(FRAME_CHROME_PRESET_IDS);
+  const knownValues = new Set(FRAME_SHELL_PRESET_IDS);
   const groups = FRAME_SHELL_GROUPS.map((group) => ({
     ...group,
     values: group.values.filter((value) => knownValues.has(value))
@@ -412,7 +412,7 @@ function FrameShellGrid({
           <IconChoiceGrid
             activeValue={activeValue}
             values={group.values}
-            labels={CHROME_LABELS}
+            labels={SHELL_LABELS}
             onChange={onChange}
           />
         </div>
@@ -578,7 +578,7 @@ export function InspectorPanel({
   onFramePresetChange,
   onFrameBoxStyleChange,
   onFrameMaterialChange,
-  onFrameChromeTextChange,
+  onFrameShellTextChange,
   onPaddingChange,
   onFrameContentPaddingChange,
   onRadiusChange,
@@ -624,7 +624,7 @@ export function InspectorPanel({
     [card.background]
   );
   const activeFrameBoxStyle = resolveFrameBoxStyle(card.frame);
-  const activeFrameChromePreset = card.frame.preset;
+  const activeFrameShellPreset = card.frame.preset;
   const isGlassMaterial = activeFrameBoxStyle === 'glass-panel';
   const shadowSettings = resolveFrameShadowSettings(card.frame, palette);
   const updateShadowSettings = (
@@ -644,7 +644,7 @@ export function InspectorPanel({
     });
   const frameColorLabel = boxColorLabel(activeFrameBoxStyle);
   const frameInsetLabel =
-    activeFrameChromePreset === 'none' ? 'Content inset' : 'Chrome gap';
+    activeFrameShellPreset === 'none' ? 'Content inset' : 'Shell inset';
   const usesColorList = isColorListBackgroundPreset(activeBackgroundPresetId);
   const showAccentColor =
     (usesColorList ||
@@ -914,19 +914,19 @@ export function InspectorPanel({
             }
           />
         ) : null}
-        <div className={styles.frameGroupLabel}>Presentation</div>
+        <div className={styles.frameGroupLabel}>Shell</div>
         <FrameShellGrid
-          activeValue={activeFrameChromePreset}
+          activeValue={activeFrameShellPreset}
           onChange={onFramePresetChange}
         />
-        {activeFrameChromePreset !== 'none' ? (
+        {activeFrameShellPreset !== 'none' ? (
           <label className={styles.textField}>
-            <span>Bar text</span>
+            <span>Title text</span>
             <input
               value={card.frame.chromeText ?? ''}
               placeholder="Auto from card name"
               onChange={(event) =>
-                onFrameChromeTextChange(event.currentTarget.value || undefined)
+                onFrameShellTextChange(event.currentTarget.value || undefined)
               }
             />
           </label>
