@@ -14,6 +14,10 @@
   display: none;
 }
 
+.desktopOnlyNotice {
+  display: none;
+}
+
 /* ---------- Top bar ---------- */
 
 .topBar {
@@ -1135,85 +1139,67 @@
   color: var(--color-danger);
 }
 
-/* ---------- Adaptive ---------- */
+/* ---------- Desktop gate ---------- */
 
-@media (max-width: 1180px) {
+@media (max-width: 1180px), (pointer: coarse) {
   .page {
-    position: relative;
-    min-height: 100vh;
-    overflow: visible;
+    grid-template-rows: 1fr;
+    min-height: 100dvh;
+    overflow: hidden;
   }
-  .workspace {
-    display: flex;
-    flex-direction: column;
-    grid-template-columns: 1fr;
-    overflow: visible;
-  }
-  .workspace > * {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    flex: 0 0 auto;
-  }
-  .stageWrap {
-    order: 1;
-    border-bottom: 1px solid var(--color-hairline);
-    min-height: 480px;
-  }
-  .leftRail {
-    order: 2;
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 12px;
-    border-right: none;
-    border-bottom: 1px solid var(--color-hairline);
-  }
-  .presetList {
-    display: flex;
-    flex-direction: row;
-    gap: 14px;
-    overflow-x: auto;
-    overflow-y: visible;
-  }
-  .presetGroup {
-    flex: 0 0 auto;
-    min-width: 220px;
-  }
-  .presetGroupGrid {
-    grid-auto-flow: column;
-    grid-auto-columns: 220px;
-  }
-  .railHeader,
-  .railFooter {
-    display: none;
-  }
-}
 
-@media (max-width: 720px) {
-  .topBar {
-    grid-template-columns: auto auto;
-    gap: 8px;
-    padding: 0 10px;
-  }
-  .topActions {
-    gap: 6px;
-  }
-  .toolGroup {
-    padding: 2px;
-  }
-  .brandTag,
-  .ghostButton span,
-  .primaryButton span {
+  .topBar,
+  .workspace,
+  .dropOverlay,
+  .toastSlot {
     display: none;
   }
-  .exportPopover {
-    top: 64px;
-    right: 10px;
-    left: 10px;
-    width: auto;
+
+  .desktopOnlyNotice {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 12px;
+    width: min(420px, calc(100vw - 40px));
+    margin: auto;
+    padding: 34px 28px;
+    border: 1px solid var(--color-hairline-strong);
+    border-radius: var(--radius-lg);
+    background: rgba(18, 18, 23, 0.74);
+    color: var(--color-text-soft);
+    text-align: center;
+    box-shadow: var(--shadow-glass);
+    backdrop-filter: blur(var(--blur-soft)) saturate(1.2);
+    -webkit-backdrop-filter: blur(var(--blur-soft)) saturate(1.2);
   }
-  .exportPopover .ghostButton span,
-  .exportPopover .primaryButton span {
-    display: inline;
+
+  .desktopOnlyMark {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-sm);
+    background:
+      radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.32), transparent 54%),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: var(--type-sm);
+    font-weight: 650;
+  }
+
+  .desktopOnlyTitle {
+    color: var(--color-text);
+    font-size: 1.02rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  .desktopOnlyCopy {
+    max-width: 32ch;
+    color: var(--color-text-muted);
+    font-size: var(--type-xs);
+    line-height: 1.55;
   }
 }

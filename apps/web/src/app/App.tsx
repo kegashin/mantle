@@ -1394,6 +1394,15 @@ export function App() {
         if (file) void importFile(file, { mode: 'auto' });
       }}
     >
+      <div className={styles.desktopOnlyNotice} role="status">
+        <span className={styles.desktopOnlyMark}>M</span>
+        <span className={styles.desktopOnlyTitle}>Open Mantle on desktop</span>
+        <span className={styles.desktopOnlyCopy}>
+          The editor needs a full-size screen for canvas controls, drag handles,
+          and export settings.
+        </span>
+      </div>
+
       <input
         accept={ACCEPTED_INPUT}
         className={styles.hiddenInput}
