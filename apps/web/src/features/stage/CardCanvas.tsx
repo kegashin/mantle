@@ -38,6 +38,12 @@ const PREVIEW_MIN_RENDER_INTERVAL_MS = 1000 / 30;
 const FRAME_SCALE_MIN = 0.35;
 const FRAME_SCALE_MAX = 2.5;
 const FRAME_SNAP_DISTANCE_PX = 6;
+const STAGE_ACTIONS_ESTIMATED_WIDTH = 132;
+const STAGE_ACTIONS_ESTIMATED_HEIGHT = 40;
+const STAGE_ACTIONS_STAGE_INSET = 12;
+const FRAME_TOOLBAR_ESTIMATED_WIDTH = 132;
+const FRAME_TOOLBAR_ESTIMATED_HEIGHT = 42;
+const FRAME_TOOLBAR_STAGE_INSET = 12;
 const FRAME_ROTATION_SNAP_DEGREES = 2;
 const FRAME_ROTATION_SNAP_ANCHORS = [
   -180,
@@ -201,6 +207,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampToRange(value: number, min: number, max: number): number {
+  if (max < min) return (min + max) / 2;
+  return clamp(value, min, max);
+}
+
 function normalizeCrop(crop: MantleSourceCrop): MantleSourceCrop {
   const width = clamp(crop.width, 0.01, 1);
   const height = clamp(crop.height, 0.01, 1);
@@ -266,12 +277,12 @@ function applyFrameTransformToCssRect({
   const width = rect.width * transform.scaleX;
   const height = rect.height * transform.scaleY;
 
-  return fitTransformedRectInsideCanvas({
+  return {
     x: rect.x + (rect.width - width) / 2 + transform.x * canvasRect.width,
     y: rect.y + (rect.height - height) / 2 + transform.y * canvasRect.height,
     width,
     height
-  }, canvasRect, transform.rotation);
+  };
 }
 
 function frameTransformAngle(
@@ -284,117 +295,54 @@ function frameTransformAngle(
 }
 
 function rotatedBounds(rect: StageRect, rotation: number): StageRect {
-  if (rotation === 0) return rect;
+  return rotatedBoundsAround(rect, rotation, {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2
+  });
+}
+
+function rotatePointAround(
+  point: { x: number; y: number },
+  origin: { x: number; y: number },
+  rotation: number
+): { x: number; y: number } {
+  if (rotation === 0) return point;
 
   const radians = (rotation * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(radians));
-  const sin = Math.abs(Math.sin(radians));
-  const width = rect.width * cos + rect.height * sin;
-  const height = rect.width * sin + rect.height * cos;
-  const centerX = rect.x + rect.width / 2;
-  const centerY = rect.y + rect.height / 2;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = point.x - origin.x;
+  const dy = point.y - origin.y;
 
   return {
-    x: centerX - width / 2,
-    y: centerY - height / 2,
-    width,
-    height
+    x: origin.x + dx * cos - dy * sin,
+    y: origin.y + dx * sin + dy * cos
   };
 }
 
-function fitTransformedRectInsideCanvas(
+function rotatedBoundsAround(
   rect: StageRect,
-  canvasRect: StageRect,
-  rotation: number
+  rotation: number,
+  origin: { x: number; y: number }
 ): StageRect {
-  let fitted = rect;
-  let bounds = rotatedBounds(fitted, rotation);
-  const fitScale = Math.min(
-    1,
-    canvasRect.width / Math.max(1, bounds.width),
-    canvasRect.height / Math.max(1, bounds.height)
-  );
+  if (rotation === 0) return rect;
 
-  if (fitScale < 1) {
-    const centerX = fitted.x + fitted.width / 2;
-    const centerY = fitted.y + fitted.height / 2;
-    const width = fitted.width * fitScale;
-    const height = fitted.height * fitScale;
-    fitted = {
-      x: centerX - width / 2,
-      y: centerY - height / 2,
-      width,
-      height
-    };
-    bounds = rotatedBounds(fitted, rotation);
-  }
-
-  let shiftX = 0;
-  let shiftY = 0;
-  if (bounds.x < canvasRect.x) shiftX = canvasRect.x - bounds.x;
-  if (bounds.x + bounds.width > canvasRect.x + canvasRect.width) {
-    shiftX = canvasRect.x + canvasRect.width - (bounds.x + bounds.width);
-  }
-  if (bounds.y < canvasRect.y) shiftY = canvasRect.y - bounds.y;
-  if (bounds.y + bounds.height > canvasRect.y + canvasRect.height) {
-    shiftY = canvasRect.y + canvasRect.height - (bounds.y + bounds.height);
-  }
-
+  const corners = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x, y: rect.y + rect.height },
+    { x: rect.x + rect.width, y: rect.y + rect.height }
+  ].map((point) => rotatePointAround(point, origin, rotation));
+  const minX = Math.min(...corners.map((point) => point.x));
+  const maxX = Math.max(...corners.map((point) => point.x));
+  const minY = Math.min(...corners.map((point) => point.y));
+  const maxY = Math.max(...corners.map((point) => point.y));
   return {
-    ...fitted,
-    x: fitted.x + shiftX,
-    y: fitted.y + shiftY
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY
   };
-}
-
-function clampFrameTransformToSurface(
-  transform: MantleFrameTransform,
-  surface: PreviewSurface | null
-): MantleFrameTransform {
-  const normalized = normalizeFrameTransform(transform);
-  if (!surface) return normalized;
-
-  let next = normalized;
-  let rect = applyFrameTransformToCssRect({
-    rect: surface.baseFrameCssRect,
-    canvasRect: surface.canvasCssRect,
-    transform: next
-  });
-  const rawWidth = surface.baseFrameCssRect.width * next.scaleX;
-  const rawHeight = surface.baseFrameCssRect.height * next.scaleY;
-  if (rect.width < rawWidth || rect.height < rawHeight) {
-    const fitScale = Math.min(
-      rect.width / Math.max(1, rawWidth),
-      rect.height / Math.max(1, rawHeight)
-    );
-    next = normalizeFrameTransform({
-      ...next,
-      scaleX: next.scaleX * fitScale,
-      scaleY: next.scaleY * fitScale
-    });
-    rect = applyFrameTransformToCssRect({
-      rect: surface.baseFrameCssRect,
-      canvasRect: surface.canvasCssRect,
-      transform: next
-    });
-  }
-
-  const wantedRect = {
-    x: surface.baseFrameCssRect.x +
-      (surface.baseFrameCssRect.width - surface.baseFrameCssRect.width * next.scaleX) / 2 +
-      next.x * surface.canvasCssRect.width,
-    y: surface.baseFrameCssRect.y +
-      (surface.baseFrameCssRect.height - surface.baseFrameCssRect.height * next.scaleY) / 2 +
-      next.y * surface.canvasCssRect.height,
-    width: surface.baseFrameCssRect.width * next.scaleX,
-    height: surface.baseFrameCssRect.height * next.scaleY
-  };
-
-  return normalizeFrameTransform({
-    ...next,
-    x: next.x + (rect.x - wantedRect.x) / Math.max(1, surface.canvasCssRect.width),
-    y: next.y + (rect.y - wantedRect.y) / Math.max(1, surface.canvasCssRect.height)
-  });
 }
 
 function findNearestSnap({
@@ -428,15 +376,15 @@ function snapFrameTransformToSurface({
   surface: PreviewSurface | null;
   includeEdges: boolean;
 }): { transform: MantleFrameTransform; guides: FrameSnapGuide[] } {
-  const clamped = clampFrameTransformToSurface(transform, surface);
-  if (!surface) return { transform: clamped, guides: [] };
+  const normalized = normalizeFrameTransform(transform);
+  if (!surface) return { transform: normalized, guides: [] };
 
   const rect = applyFrameTransformToCssRect({
     rect: surface.baseFrameCssRect,
     canvasRect: surface.canvasCssRect,
-    transform: clamped
+    transform: normalized
   });
-  const bounds = rotatedBounds(rect, clamped.rotation);
+  const bounds = rotatedBounds(rect, normalized.rotation);
   const canvas = surface.canvasCssRect;
   const frameCenterX = bounds.x + bounds.width / 2;
   const frameCenterY = bounds.y + bounds.height / 2;
@@ -457,18 +405,82 @@ function snapFrameTransformToSurface({
   const xSnap = findNearestSnap({ sources: xSources, targets: xTargets });
   const ySnap = findNearestSnap({ sources: ySources, targets: yTargets });
 
-  if (!xSnap && !ySnap) return { transform: clamped, guides: [] };
+  if (!xSnap && !ySnap) return { transform: normalized, guides: [] };
 
   return {
-    transform: clampFrameTransformToSurface({
-      ...clamped,
-      x: clamped.x + (xSnap?.delta ?? 0) / Math.max(1, canvas.width),
-      y: clamped.y + (ySnap?.delta ?? 0) / Math.max(1, canvas.height)
-    }, surface),
+    transform: normalizeFrameTransform({
+      ...normalized,
+      x: normalized.x + (xSnap?.delta ?? 0) / Math.max(1, canvas.width),
+      y: normalized.y + (ySnap?.delta ?? 0) / Math.max(1, canvas.height)
+    }),
     guides: [
       ...(xSnap ? [{ axis: 'x' as const, position: xSnap.position }] : []),
       ...(ySnap ? [{ axis: 'y' as const, position: ySnap.position }] : [])
     ]
+  };
+}
+
+function stageActionsStyle({
+  contentRect,
+  frameRect,
+  canvasRect,
+  rotation
+}: {
+  contentRect: StageRect;
+  frameRect: StageRect;
+  canvasRect: StageRect;
+  rotation: number;
+}): CSSProperties {
+  const origin = {
+    x: frameRect.x + frameRect.width / 2,
+    y: frameRect.y + frameRect.height / 2
+  };
+  const bounds = rotatedBoundsAround(contentRect, rotation, origin);
+  const target = {
+    x: clampToRange(
+      bounds.x + bounds.width / 2,
+      canvasRect.x + STAGE_ACTIONS_STAGE_INSET + STAGE_ACTIONS_ESTIMATED_WIDTH / 2,
+      canvasRect.x + canvasRect.width - STAGE_ACTIONS_STAGE_INSET - STAGE_ACTIONS_ESTIMATED_WIDTH / 2
+    ),
+    y: clampToRange(
+      bounds.y + bounds.height / 2,
+      canvasRect.y + STAGE_ACTIONS_STAGE_INSET + STAGE_ACTIONS_ESTIMATED_HEIGHT / 2,
+      canvasRect.y + canvasRect.height - STAGE_ACTIONS_STAGE_INSET - STAGE_ACTIONS_ESTIMATED_HEIGHT / 2
+    )
+  };
+  const localTarget = rotatePointAround(target, origin, -rotation);
+
+  return {
+    left: `${localTarget.x - contentRect.x}px`,
+    top: `${localTarget.y - contentRect.y}px`,
+    '--stage-hotspot-counter-rotation': `${-rotation}deg`
+  } as CSSProperties;
+}
+
+function frameToolbarStyle({
+  frameRect,
+  canvasRect,
+  rotation
+}: {
+  frameRect: StageRect;
+  canvasRect: StageRect;
+  rotation: number;
+}): CSSProperties {
+  const bounds = rotatedBounds(frameRect, rotation);
+  const left = clampToRange(
+    bounds.x + bounds.width / 2,
+    canvasRect.x + FRAME_TOOLBAR_STAGE_INSET + FRAME_TOOLBAR_ESTIMATED_WIDTH / 2,
+    canvasRect.x + canvasRect.width - FRAME_TOOLBAR_STAGE_INSET - FRAME_TOOLBAR_ESTIMATED_WIDTH / 2
+  );
+  const top = clampToRange(
+    bounds.y + FRAME_TOOLBAR_STAGE_INSET,
+    canvasRect.y + FRAME_TOOLBAR_STAGE_INSET,
+    canvasRect.y + canvasRect.height - FRAME_TOOLBAR_STAGE_INSET - FRAME_TOOLBAR_ESTIMATED_HEIGHT
+  );
+
+  return {
+    left: `${left}px`,
+    top: `${top}px`
   };
 }
 
@@ -1182,6 +1194,15 @@ export function CardCanvas({
             : `${previewSurface.frameCssRect.x + previewSurface.frameCssRect.width / 2 - previewSurface.contentCssRect.x}px ${previewSurface.frameCssRect.y + previewSurface.frameCssRect.height / 2 - previewSurface.contentCssRect.y}px`
       }
     : undefined;
+  const stageHotspotActionsStyle =
+    previewSurface
+      ? stageActionsStyle({
+          contentRect: previewSurface.contentCssRect,
+          frameRect: previewSurface.frameCssRect,
+          canvasRect: previewSurface.canvasCssRect,
+          rotation: previewSurface.frameRotation
+        })
+      : undefined;
   const canEditSource =
     hasAssetSource &&
     Boolean(previewSurface) &&
@@ -1206,10 +1227,7 @@ export function CardCanvas({
     previewSurface && showSourcePreview
       ? sourcePreviewImageStyle(visibleCrop, previewSurface.contentCssRect)
       : undefined;
-  const activeFrameTransform = clampFrameTransformToSurface(
-    normalizeFrameTransform(card.frameTransform),
-    previewSurface
-  );
+  const activeFrameTransform = normalizeFrameTransform(card.frameTransform);
   const visibleFrameTransform = frameDraftTransform ?? activeFrameTransform;
   const visibleFrameCssRect = previewSurface
     ? applyFrameTransformToCssRect({
@@ -1228,6 +1246,14 @@ export function CardCanvas({
         '--frame-editor-counter-rotation': `${-visibleFrameTransform.rotation}deg`
       } as CSSProperties
     : undefined;
+  const frameEditorToolbarStyle =
+    visibleFrameCssRect && previewSurface
+      ? frameToolbarStyle({
+          frameRect: visibleFrameCssRect,
+          canvasRect: previewSurface.canvasCssRect,
+          rotation: visibleFrameTransform.rotation
+        })
+      : undefined;
   const wrapViewportRect = wrapRef.current?.getBoundingClientRect();
   const frameViewportRect =
     wrapViewportRect && visibleFrameCssRect
@@ -1301,7 +1327,7 @@ export function CardCanvas({
             includeEdges: options.includeEdges ?? true
           })
         : {
-            transform: clampFrameTransformToSurface(transform, previewSurface),
+            transform: normalizeFrameTransform(transform),
             guides: []
           };
     const normalized = result.transform;
@@ -1514,7 +1540,10 @@ export function CardCanvas({
         : null}
       {hasAssetSource && sourceEditorStyle && !frameEditorOpen && !sourceEditorOpen && (canEditFrame || canEditSource) ? (
         <div className={styles.stageHotspot} style={sourceEditorStyle}>
-          <div className={styles.stageHotspotActions}>
+          <div
+            className={styles.stageHotspotActions}
+            style={stageHotspotActionsStyle}
+          >
             {canEditFrame ? (
               <button
                 type="button"
@@ -1581,28 +1610,31 @@ export function CardCanvas({
               title="Resize frame"
             />
           ))}
-          <div
-            className={styles.frameEditorToolbar}
-            onPointerDown={(event) => event.stopPropagation()}
+        </div>
+      ) : null}
+      {canEditFrame && frameEditorToolbarStyle && frameEditorOpen ? (
+        <div
+          className={styles.frameEditorToolbar}
+          style={frameEditorToolbarStyle}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className={styles.frameToolButton}
+            onClick={resetFrameTransform}
           >
-            <button
-              type="button"
-              className={styles.frameToolButton}
-              onClick={resetFrameTransform}
-            >
-              Reset
-            </button>
-            <button
-              type="button"
-              className={`${styles.frameToolButton} ${styles.frameDoneButton}`}
-              onClick={() => {
-                flushFrameTransform();
-                setFrameEditorOpen(false);
-              }}
-            >
-              Done
-            </button>
-          </div>
+            Reset
+          </button>
+          <button
+            type="button"
+            className={`${styles.frameToolButton} ${styles.frameDoneButton}`}
+            onClick={() => {
+              flushFrameTransform();
+              setFrameEditorOpen(false);
+            }}
+          >
+            Done
+          </button>
         </div>
       ) : null}
       {canEditSource && sourceEditorStyle && sourceEditorOpen ? (

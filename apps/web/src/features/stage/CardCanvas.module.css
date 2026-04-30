@@ -51,6 +51,7 @@
 }
 
 .stageHotspotActions {
+  position: absolute;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -63,6 +64,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(18px) saturate(1.2);
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  transform: translate(-50%, -50%) rotate(var(--stage-hotspot-counter-rotation, 0deg));
 }
 
 .stageHotspotButton {
@@ -334,11 +336,10 @@
 
 .frameEditorToolbar {
   position: absolute;
-  left: 50%;
-  top: 10px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  width: max-content;
   min-height: 32px;
   padding: 4px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -350,7 +351,8 @@
   backdrop-filter: blur(18px) saturate(1.2);
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
   cursor: default;
-  transform: translateX(-50%) rotate(var(--frame-editor-counter-rotation, 0deg));
+  z-index: 8;
+  transform: translateX(-50%);
 }
 
 .frameToolButton {

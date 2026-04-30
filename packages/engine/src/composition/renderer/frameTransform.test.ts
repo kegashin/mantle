@@ -35,22 +35,24 @@ describe('applyFrameTransformToRect', () => {
       })
     ).toEqual({
       x: 160,
-      y: 0,
+      y: -30,
       width: 1200,
       height: 300
     });
   });
 
-  it('keeps oversized transforms inside the canvas bounds', () => {
-    const rect = applyFrameTransformToRect({
-      rect: { x: 200, y: 100, width: 800, height: 400 },
-      canvas: { x: 0, y: 0, width: 1600, height: 900 },
-      transform: { x: 0.6, y: 0.5, scaleX: 2.5, scaleY: 2.5, rotation: 0 }
+  it('allows transformed frames to move beyond the canvas bounds', () => {
+    expect(
+      applyFrameTransformToRect({
+        rect: { x: 200, y: 100, width: 800, height: 400 },
+        canvas: { x: 0, y: 0, width: 1600, height: 900 },
+        transform: { x: 0.6, y: 0.5, scaleX: 2.5, scaleY: 2.5, rotation: 0 }
+      })
+    ).toEqual({
+      x: 560,
+      y: 250,
+      width: 2000,
+      height: 1000
     });
-
-    expect(rect.x).toBeGreaterThanOrEqual(0);
-    expect(rect.y).toBeGreaterThanOrEqual(0);
-    expect(rect.x + rect.width).toBeLessThanOrEqual(1600);
-    expect(rect.y + rect.height).toBeLessThanOrEqual(900);
   });
 });
