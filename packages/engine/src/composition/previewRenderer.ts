@@ -140,7 +140,8 @@ function frameLayoutKey(frame: MantleFrame) {
     preset: frame.preset,
     boxStyle: frame.boxStyle ?? null,
     padding: frame.padding,
-    contentPadding: frame.contentPadding ?? null
+    contentPadding: frame.contentPadding ?? null,
+    cornerRadius: frame.cornerRadius
   };
 }
 
