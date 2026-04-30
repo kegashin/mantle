@@ -43,7 +43,7 @@
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   background:
     radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.4), transparent 55%),
     linear-gradient(135deg, #1a1a1f 0%, #0a0a0c 100%);
@@ -102,7 +102,7 @@
   gap: 7px;
   height: 30px;
   padding: 0 11px;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   border: 1px solid transparent;
   background: transparent;
   color: var(--color-text-soft);
@@ -120,6 +120,12 @@
   color: var(--color-text);
 }
 
+.iconButton {
+  width: 30px;
+  justify-content: center;
+  padding: 0;
+}
+
 .ghostButton:disabled,
 .primaryButton:disabled {
   cursor: not-allowed;
@@ -129,7 +135,7 @@
 .primaryButton {
   height: 32px;
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: var(--color-accent);
   color: #08080a;
   font-weight: 600;
@@ -218,7 +224,7 @@
   width: 24px;
   height: 24px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-2xs);
   background: transparent;
   color: var(--color-text-dim);
   margin-top: -2px;
@@ -270,7 +276,7 @@
 .exportSegmentedOption {
   height: 30px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-2xs);
   background: transparent;
   color: var(--color-text-muted);
   font-size: var(--type-xs);
@@ -357,7 +363,7 @@
 /* Track — WebKit */
 .exportSliderInput::-webkit-slider-runnable-track {
   height: var(--export-slider-track-h);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background:
     linear-gradient(
       to right,
@@ -372,14 +378,14 @@
 /* Track — Firefox */
 .exportSliderInput::-moz-range-track {
   height: var(--export-slider-track-h);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.45);
 }
 
 .exportSliderInput::-moz-range-progress {
   height: var(--export-slider-track-h);
-  border-radius: 999px 0 0 999px;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
   background: var(--color-text-soft);
 }
 
@@ -542,7 +548,7 @@
 .railModeButton {
   height: 30px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--color-text-dim);
   font-size: var(--type-xs);
@@ -695,7 +701,7 @@
   gap: 6px;
   height: 30px;
   border: 1px solid var(--color-hairline);
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   background: rgba(0, 0, 0, 0.18);
   color: var(--color-text-soft);
   font-size: var(--type-xxs);
@@ -743,7 +749,7 @@
   height: 30px;
   padding: 0 9px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--color-text-soft);
   text-align: left;
@@ -787,7 +793,7 @@
   height: 32px;
   padding: 0 9px;
   border: 1px solid var(--color-hairline);
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   background: rgba(0, 0, 0, 0.26);
   color: var(--color-text);
   font: inherit;
@@ -844,7 +850,7 @@
   min-width: 24px;
   height: 24px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-2xs);
   background: transparent;
   color: var(--color-text-muted);
 }
@@ -900,7 +906,7 @@
   margin-top: 6px;
   padding: 0 10px;
   border: 1px solid rgba(232, 197, 138, 0.28);
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   background: rgba(232, 197, 138, 0.08);
   color: var(--color-text);
   font-size: var(--type-xxs);

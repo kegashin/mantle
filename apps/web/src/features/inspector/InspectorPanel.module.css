@@ -62,7 +62,7 @@
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.04);
   color: var(--color-text-muted);
 }
@@ -119,9 +119,9 @@
 
 /* ---------- Aspect ratio ---------- */
 
-.ratioGrid {
+.ratioGrid,
+.ratioModeGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   padding: 3px;
   border: 1px solid var(--color-hairline);
@@ -129,12 +129,20 @@
   background: rgba(0, 0, 0, 0.16);
 }
 
+.ratioGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ratioModeGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .ratioButton {
   min-width: 0;
   min-height: 28px;
   padding: 0 6px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-2xs);
   background: transparent;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
@@ -164,7 +172,7 @@
 
 .dimensionField {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   color: var(--color-text-dim);
   font-size: var(--type-xs);
 }
@@ -175,22 +183,40 @@
 }
 
 .dimensionField input {
+  appearance: textfield;
   height: 32px;
   width: 100%;
   min-width: 0;
+  padding: 0 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.25);
   color: var(--color-text);
-  padding: 0 11px;
   font-family: var(--font-mono);
   font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  outline: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.dimensionField input::-webkit-inner-spin-button,
+.dimensionField input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.dimensionField input:hover {
+  border-color: var(--color-hairline-strong);
 }
 
 .dimensionField input:focus {
-  outline: none;
   border-color: var(--color-hairline-active);
-  background: rgba(0, 0, 0, 0.34);
+  background: rgba(0, 0, 0, 0.42);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Sliders / params ---------- */
@@ -223,30 +249,37 @@
 
 .sliderValueButton,
 .sliderValueInput {
-  padding: 2px 8px;
+  height: 24px;
+  padding: 0 10px;
   border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.28);
+  border-radius: var(--radius-xs);
+  background: rgba(0, 0, 0, 0.25);
   color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--type-xs);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .sliderValueButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: text;
 }
 
 .sliderValueInput {
-  width: 72px;
+  width: 78px;
   min-width: 0;
   outline: none;
   appearance: textfield;
+  text-align: center;
 }
 
 .sliderValueInput::-webkit-inner-spin-button,
@@ -256,10 +289,15 @@
 }
 
 .slider:hover .sliderValueButton,
-.slider:focus-within .sliderValueButton,
-.sliderValueInput:focus {
+.slider:focus-within .sliderValueButton {
   border-color: var(--color-hairline-strong);
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.sliderValueInput:focus {
+  border-color: var(--color-hairline-active);
   background: rgba(0, 0, 0, 0.42);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Custom range input ---------- */
@@ -349,7 +387,7 @@
 
 .sliderInput::-webkit-slider-runnable-track {
   height: var(--slider-track-h);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background:
     linear-gradient(
       to right,
@@ -365,14 +403,14 @@
 
 .sliderInput::-moz-range-track {
   height: var(--slider-track-h);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--slider-track);
   box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.45);
 }
 
 .sliderInput::-moz-range-progress {
   height: var(--slider-track-h);
-  border-radius: 999px 0 0 999px;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
   background: var(--slider-fill-color);
 }
 
@@ -384,7 +422,7 @@
   width: var(--slider-thumb-w);
   height: var(--slider-thumb-h);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--slider-thumb-bg);
   margin-top: calc((var(--slider-track-h) - var(--slider-thumb-h)) / 2);
   box-shadow: var(--slider-thumb-shadow), var(--slider-thumb-glow);
@@ -400,7 +438,7 @@
   width: var(--slider-thumb-w);
   height: var(--slider-thumb-h);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--slider-thumb-bg);
   box-shadow: var(--slider-thumb-shadow), var(--slider-thumb-glow);
   cursor: grab;
@@ -605,9 +643,61 @@
 
 .gradientColorItem {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: 24px minmax(0, 1fr) 32px;
   gap: 6px;
   align-items: end;
+  padding: 3px;
+  margin: -3px;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+.gradientColorItemDragging {
+  opacity: 0.48;
+}
+
+.gradientColorItemDropTarget {
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px var(--color-hairline-active);
+}
+
+.gradientDragHandle {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-text-dim);
+  cursor: grab;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.gradientDragHandle span {
+  width: 12px;
+  height: 16px;
+  background-image: radial-gradient(currentColor 1.15px, transparent 1.2px);
+  background-position: 0 0;
+  background-size: 6px 6px;
+  opacity: 0.82;
+}
+
+.gradientDragHandle:hover,
+.gradientDragHandle:focus-visible {
+  border-color: var(--color-hairline-strong);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--color-text-soft);
+}
+
+.gradientDragHandle:active {
+  cursor: grabbing;
 }
 
 .gradientRemoveButton {
@@ -712,7 +802,7 @@
 .segmentedOption {
   padding: 6px 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-2xs);
   background: transparent;
   color: var(--color-text-muted);
   font-size: var(--type-xs);
@@ -754,20 +844,42 @@
 }
 
 .selectField select {
+  appearance: none;
+  -webkit-appearance: none;
   height: 32px;
-  padding: 0 11px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 32px 0 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
+  background-color: rgba(0, 0, 0, 0.25);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23afadaa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
   color: var(--color-text);
+  font-family: var(--font-sans);
   font-size: var(--type-xs);
   cursor: pointer;
+  outline: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.selectField select::-ms-expand {
+  display: none;
+}
+
+.selectField select:hover {
+  border-color: var(--color-hairline-strong);
+  background-color: rgba(0, 0, 0, 0.32);
 }
 
 .selectField select:focus {
-  outline: none;
   border-color: var(--color-hairline-active);
-  background: rgba(0, 0, 0, 0.34);
+  background-color: rgba(0, 0, 0, 0.42);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Text fields ---------- */
@@ -785,22 +897,48 @@
 
 .textField input,
 .textField textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.25);
   color: var(--color-text);
-  padding: 9px 11px;
   font-size: var(--type-sm);
   font-family: var(--font-sans);
-  line-height: 1.45;
+  line-height: 1.5;
+  outline: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.textField input {
+  height: 36px;
+  padding: 0 12px;
+}
+
+.textField textarea {
+  min-height: 64px;
   resize: vertical;
+}
+
+.textField input::placeholder,
+.textField textarea::placeholder {
+  color: var(--color-text-dim);
+}
+
+.textField input:hover,
+.textField textarea:hover {
+  border-color: var(--color-hairline-strong);
 }
 
 .textField input:focus,
 .textField textarea:focus {
-  outline: none;
   border-color: var(--color-hairline-active);
-  background: rgba(0, 0, 0, 0.34);
+  background: rgba(0, 0, 0, 0.42);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Export summary ---------- */

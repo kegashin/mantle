@@ -10,6 +10,8 @@ export type IconName =
   | 'download'
   | 'copy'
   | 'reset'
+  | 'undo'
+  | 'redo'
   | 'play'
   | 'pause'
   | 'split'
@@ -22,7 +24,20 @@ export type IconName =
   | 'alert'
   | 'check'
   | 'dot'
-  | 'grain';
+  | 'grain'
+  | 'frame'
+  | 'aspect-ratio'
+  | 'type'
+  | 'browser'
+  | 'window-mac'
+  | 'window-win'
+  | 'terminal'
+  | 'code'
+  | 'document'
+  | 'forbidden'
+  | 'panel'
+  | 'glass'
+  | 'shuffle';
 
 type IconProps = SVGProps<SVGSVGElement> & {
   name: IconName;
@@ -109,6 +124,18 @@ const paths: Record<IconName, ReactElement> = {
       <path d="M3 4v5h5" />
     </>
   ),
+  undo: (
+    <>
+      <path d="m9 14-5-5 5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </>
+  ),
+  redo: (
+    <>
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </>
+  ),
   play: <path d="M6 4v16l14-8Z" />,
   pause: (
     <>
@@ -174,6 +201,106 @@ const paths: Record<IconName, ReactElement> = {
       <circle cx="8" cy="14" r="1" fill="currentColor" />
       <circle cx="16" cy="16" r="1" fill="currentColor" />
       <circle cx="12" cy="18" r="1" fill="currentColor" />
+    </>
+  ),
+  frame: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <rect x="7" y="7" width="10" height="10" rx="1" />
+    </>
+  ),
+  'aspect-ratio': (
+    <>
+      <rect x="3" y="3" width="18" height="10" rx="1.5" />
+      <rect x="7" y="15" width="10" height="6" rx="1.5" />
+    </>
+  ),
+  type: (
+    <>
+      <path d="M5 5h14" />
+      <path d="M12 5v14" />
+    </>
+  ),
+  browser: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M7 6.5h10" />
+    </>
+  ),
+  'window-mac': (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
+      <circle cx="6" cy="6.5" r="0.9" fill="currentColor" />
+      <circle cx="8.5" cy="6.5" r="0.9" fill="currentColor" />
+      <circle cx="11" cy="6.5" r="0.9" fill="currentColor" />
+    </>
+  ),
+  'window-win': (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M14.2 7h1.4" />
+      <rect x="16.8" y="6.2" width="1.6" height="1.6" rx="0.2" />
+      <path d="m19.6 6.2 1.4 1.6" />
+      <path d="m21 6.2-1.4 1.6" />
+    </>
+  ),
+  terminal: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="m7 10 3 2-3 2" />
+      <path d="M13 14h4" />
+    </>
+  ),
+  code: (
+    <>
+      <path d="m9 8-5 4 5 4" />
+      <path d="m15 8 5 4-5 4" />
+      <path d="m13 5-2 14" />
+    </>
+  ),
+  document: (
+    <>
+      <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v4h4" />
+      <path d="M8 13h8" />
+      <path d="M8 16h8" />
+      <path d="M8 10h4" />
+    </>
+  ),
+  forbidden: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m5.5 5.5 13 13" />
+    </>
+  ),
+  panel: (
+    <rect
+      x="4"
+      y="4"
+      width="16"
+      height="16"
+      rx="2"
+      fill="currentColor"
+      fillOpacity="0.22"
+    />
+  ),
+  glass: (
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="m6 16 10-10" />
+    </>
+  ),
+  shuffle: (
+    <>
+      <path d="m17 3 4 4-4 4" />
+      <path d="M3 7h2c2 0 3 1 4 3" />
+      <path d="M21 7h-4c-2 0-3 1-4 3" />
+      <path d="m17 13 4 4-4 4" />
+      <path d="M3 17h2c2 0 3-1 4-3" />
+      <path d="M21 17h-4c-2 0-3-1-4-3" />
     </>
   )
 };

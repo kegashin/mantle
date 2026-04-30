@@ -81,7 +81,7 @@ export function upsertCustomTargetForActiveCard(
   const nextTarget: MantleSurfaceTarget = {
     id: customTargetId,
     kind: 'custom',
-    label: nextAspectRatioPresetId === 'free' ? 'Free' : 'Custom',
+    label: nextAspectRatioPresetId === 'free' ? 'Freeform' : 'Custom ratio',
     width: normalizeSurfaceDimension(patch.width ?? baseTarget.width, baseTarget.width),
     height: normalizeSurfaceDimension(patch.height ?? baseTarget.height, baseTarget.height),
     platform: 'custom',

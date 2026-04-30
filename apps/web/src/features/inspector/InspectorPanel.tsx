@@ -24,6 +24,7 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type DragEvent as ReactDragEvent,
   type ReactNode
 } from 'react';
 
@@ -97,28 +98,28 @@ type FrameShellGroup = {
 };
 
 const BOX_STYLE_LABELS: Record<MantleFrameBoxStyle, IconChoiceMeta> = {
-  none: { label: 'None', icon: 'image' },
-  solid: { label: 'Panel', icon: 'split' },
-  'glass-panel': { label: 'Glass', icon: 'sparkle' }
+  none: { label: 'None', icon: 'forbidden' },
+  solid: { label: 'Solid', icon: 'panel' },
+  'glass-panel': { label: 'Glass', icon: 'glass' }
 };
 
 const SHELL_LABELS: Record<MantleFramePreset, IconChoiceMeta> = {
-  none: { label: 'None', icon: 'image' },
-  'macos-window': { label: 'macOS window', icon: 'split' },
-  'minimal-browser': { label: 'Browser', icon: 'eye' },
-  'terminal-window': { label: 'Terminal', icon: 'sparkle' },
-  'windows-window': { label: 'Windows', icon: 'split' },
-  'code-editor': { label: 'Code editor', icon: 'sliders' },
-  'document-page': { label: 'Document', icon: 'film' }
+  none: { label: 'None', icon: 'forbidden' },
+  'macos-window': { label: 'macOS window', icon: 'window-mac' },
+  'minimal-browser': { label: 'Browser', icon: 'browser' },
+  'terminal-window': { label: 'Terminal', icon: 'terminal' },
+  'windows-window': { label: 'Windows', icon: 'window-win' },
+  'code-editor': { label: 'Code editor', icon: 'code' },
+  'document-page': { label: 'Document', icon: 'document' }
 };
 
 const FRAME_SHELL_GROUPS: FrameShellGroup[] = [
   {
-    label: 'Basic',
+    label: 'Plain',
     values: ['none']
   },
   {
-    label: 'Windows',
+    label: 'App frames',
     values: ['minimal-browser', 'macos-window', 'windows-window', 'terminal-window', 'code-editor']
   },
   {
@@ -141,17 +142,17 @@ const TEXT_PLACEMENT_OPTIONS: Array<{ value: MantleTextPlacement; label: string 
   { value: 'right', label: 'Right' }
 ];
 
-const TEXT_SHADOW_OPTIONS: Array<{ value: MantleTextShadow; label: string }> = [
-  { value: 'auto', label: 'Auto' },
+const TEXT_SHADOW_OPTIONS: Array<{ value: MantleTextShadow; label: string; title?: string }> = [
+  { value: 'auto', label: 'Auto', title: 'Auto adds shadow when the text needs contrast.' },
   { value: 'on', label: 'On' },
   { value: 'off', label: 'Off' }
 ];
 
 const TEXT_FONT_OPTIONS: Array<{ value: MantleTextFont; label: string }> = [
-  { value: 'sans', label: 'Sans' },
-  { value: 'system', label: 'System' },
-  { value: 'display', label: 'Display' },
-  { value: 'rounded', label: 'Rounded' },
+  { value: 'sans', label: 'System Sans' },
+  { value: 'system', label: 'Native UI' },
+  { value: 'display', label: 'Display Sans' },
+  { value: 'rounded', label: 'Rounded Sans' },
   { value: 'serif', label: 'Serif' },
   { value: 'editorial', label: 'Editorial' },
   { value: 'slab', label: 'Slab' },
@@ -197,6 +198,15 @@ function snapSliderValue(value: number, min: number, max: number, step: number):
   return clampNumber(Number(snapped.toFixed(precision)), min, max);
 }
 
+function reorderItems<T>(items: readonly T[], fromIndex: number, toIndex: number): T[] {
+  if (fromIndex === toIndex) return [...items];
+  const nextItems = [...items];
+  const [item] = nextItems.splice(fromIndex, 1);
+  if (item === undefined) return [...items];
+  nextItems.splice(toIndex, 0, item);
+  return nextItems;
+}
+
 function formatSliderEditValue(value: number, scale: number): string {
   const scaled = value * scale;
   if (Number.isInteger(scaled)) return String(scaled);
@@ -218,10 +228,7 @@ function defaultBoxColor(
 }
 
 function boxColorLabel(boxStyle: MantleFrameBoxStyle): string {
-  if (boxStyle === 'glass-panel') {
-    return 'Color';
-  }
-  return 'Panel color';
+  return boxStyle === 'glass-panel' ? 'Glass color' : 'Surface color';
 }
 
 type AspectMode = MantleSurfaceAspectRatioPreset;
@@ -231,13 +238,19 @@ const ASPECT_RATIO_OPTIONS: Array<{
   label: string;
   ratio?: number;
 }> = [
-  { value: 'free', label: 'Free' },
-  { value: 'custom-ratio', label: 'Custom' },
   { value: '1:1', label: '1:1', ratio: 1 },
   { value: '16:9', label: '16:9', ratio: 16 / 9 },
   { value: '9:16', label: '9:16', ratio: 9 / 16 },
   { value: '4:5', label: '4:5', ratio: 4 / 5 },
-  { value: '1.91:1', label: '1.91:1', ratio: 1200 / 630 }
+  { value: '1.91:1', label: 'OG 1.91', ratio: 1200 / 630 }
+];
+
+const ASPECT_MODE_OPTIONS: Array<{
+  value: AspectMode;
+  label: string;
+}> = [
+  { value: 'free', label: 'Freeform' },
+  { value: 'custom-ratio', label: 'Custom ratio' }
 ];
 
 function Section({
@@ -333,7 +346,7 @@ function Segmented<T extends string>({
   onChange
 }: {
   value: T;
-  options: Array<{ value: T; label: string }>;
+  options: Array<{ value: T; label: string; title?: string }>;
   onChange: (next: T) => void;
 }) {
   return (
@@ -347,6 +360,7 @@ function Segmented<T extends string>({
               ? `${styles.segmentedOption} ${styles.segmentedOptionActive}`
               : styles.segmentedOption
           }
+          title={option.title}
           onClick={() => onChange(option.value)}
         >
           {option.label}
@@ -585,6 +599,8 @@ export function InspectorPanel({
   onFrameShadowChange,
   onTextChange
 }: InspectorPanelProps) {
+  const [draggedColorIndex, setDraggedColorIndex] = useState<number | null>(null);
+  const [dropColorIndex, setDropColorIndex] = useState<number | null>(null);
   const palette = card.background.palette;
   const activeTarget = useMemo(
     () => targets.find((target) => target.id === card.targetId) ?? targets[0],
@@ -643,8 +659,7 @@ export function InspectorPanel({
       ...patch
     });
   const frameColorLabel = boxColorLabel(activeFrameBoxStyle);
-  const frameInsetLabel =
-    activeFrameShellPreset === 'none' ? 'Content inset' : 'Shell inset';
+  const frameInsetLabel = 'Inner padding';
   const usesColorList = isColorListBackgroundPreset(activeBackgroundPresetId);
   const showAccentColor =
     (usesColorList ||
@@ -661,7 +676,42 @@ export function InspectorPanel({
     activeBackgroundPresetId === 'smoke-veil' ||
     activeBackgroundPresetId === 'terminal-scanline' ||
     activeBackgroundPresetId === 'contour-lines';
-  const colorListLabel = 'Gradient colors';
+  const colorListLabel = 'Palette colors';
+  const clearColorDragState = () => {
+    setDraggedColorIndex(null);
+    setDropColorIndex(null);
+  };
+  const moveGradientColor = (fromIndex: number | null, toIndex: number) => {
+    if (fromIndex == null || fromIndex === toIndex) {
+      clearColorDragState();
+      return;
+    }
+    onBackgroundColorsChange(reorderItems(gradientColors, fromIndex, toIndex));
+    clearColorDragState();
+  };
+  const handleColorDragStart = (
+    event: ReactDragEvent<HTMLButtonElement>,
+    index: number
+  ) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+    setDraggedColorIndex(index);
+    setDropColorIndex(index);
+  };
+  const handleColorDrop = (
+    event: ReactDragEvent<HTMLDivElement>,
+    index: number
+  ) => {
+    event.preventDefault();
+    const transferredIndex = Number.parseInt(
+      event.dataTransfer.getData('text/plain'),
+      10
+    );
+    moveGradientColor(
+      Number.isFinite(transferredIndex) ? transferredIndex : draggedColorIndex,
+      index
+    );
+  };
   const paletteFieldCount =
     1 + (showForegroundColor ? 1 : 0) + (showAccentColor ? 1 : 0);
   const paletteClassName =
@@ -685,7 +735,7 @@ export function InspectorPanel({
 
   return (
     <aside className={styles.inspector}>
-      <Section icon="grain" title="Background" defaultOpen>
+      <Section icon="grain" title="Backdrop" defaultOpen>
         <div className={styles.presetIdentity}>
           <span className={styles.identityLabel}>{activeBackgroundPreset.label}</span>
           <span className={styles.identityHint}>{activeBackgroundPreset.hint}</span>
@@ -699,9 +749,9 @@ export function InspectorPanel({
             }
           >
             <div className={styles.backgroundImageMeta}>
-              <span className={styles.backgroundImageLabel}>Selected image</span>
+              <span className={styles.backgroundImageLabel}>Backdrop image</span>
               <span className={styles.backgroundImageName}>
-                {backgroundAsset?.name ?? 'Saved background image'}
+                {backgroundAsset?.name ?? 'Saved backdrop image'}
               </span>
               {backgroundAsset?.width && backgroundAsset.height ? (
                 <span className={styles.backgroundImageSize}>
@@ -725,18 +775,18 @@ export function InspectorPanel({
                 }
                 title={
                   isImageBackgroundMissing
-                    ? 'Relink background image'
-                    : 'Replace background image'
+                    ? 'Relink backdrop image'
+                    : 'Replace backdrop image'
                 }
               >
                 <Icon name="image" size={13} aria-hidden="true" />
-                <span>{isImageBackgroundMissing ? 'Relink' : 'Replace'}</span>
+                <span>{isImageBackgroundMissing ? 'Relink file' : 'Replace image'}</span>
               </button>
               <button
                 type="button"
                 className={styles.actionButton}
                 onClick={onBackgroundImageClear}
-                title="Remove background image"
+                title="Remove backdrop image"
               >
                 <Icon name="close" size={13} aria-hidden="true" />
                 <span>Clear</span>
@@ -768,9 +818,9 @@ export function InspectorPanel({
                 type="button"
                 className={styles.actionButton}
                 onClick={onBackgroundRandomize}
-                title="Randomize background layout"
+                title="Randomize backdrop layout"
               >
-                <Icon name="reset" size={13} aria-hidden="true" />
+                <Icon name="shuffle" size={13} aria-hidden="true" />
                 <span>Randomize</span>
               </button>
             ) : null}
@@ -778,10 +828,10 @@ export function InspectorPanel({
               type="button"
               className={styles.actionButton}
               onClick={onBackgroundColorsReset}
-              title="Reset background colors"
+              title="Restore the default backdrop palette"
             >
               <Icon name="reset" size={13} aria-hidden="true" />
-              <span>Reset colors</span>
+              <span>Default colors</span>
             </button>
           </div>
         ) : null}
@@ -805,7 +855,34 @@ export function InspectorPanel({
             </div>
             <div className={styles.gradientColorGrid}>
               {gradientColors.map((color, index) => (
-                <div className={styles.gradientColorItem} key={index}>
+                <div
+                  className={[
+                    styles.gradientColorItem,
+                    draggedColorIndex === index ? styles.gradientColorItemDragging : '',
+                    dropColorIndex === index ? styles.gradientColorItemDropTarget : ''
+                  ].filter(Boolean).join(' ')}
+                  key={index}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                    setDropColorIndex(index);
+                  }}
+                  onDragLeave={() => {
+                    setDropColorIndex((current) => (current === index ? null : current));
+                  }}
+                  onDrop={(event) => handleColorDrop(event, index)}
+                >
+                  <button
+                    type="button"
+                    className={styles.gradientDragHandle}
+                    draggable={gradientColors.length > 1}
+                    aria-label={`Drag Color ${index + 1}`}
+                    title="Drag to reorder"
+                    onDragStart={(event) => handleColorDragStart(event, index)}
+                    onDragEnd={clearColorDragState}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
                   <ColorSwatch
                     label={`Color ${index + 1}`}
                     value={color}
@@ -835,7 +912,7 @@ export function InspectorPanel({
         ) : (
           <div className={paletteClassName}>
             <ColorSwatch
-              label="Background"
+              label="Base"
               value={palette.background}
               onChange={(next) => onPaletteChange({ background: next })}
             />
@@ -857,7 +934,7 @@ export function InspectorPanel({
         )}
       </Section>
 
-      <Section icon="sliders" title="Frame" defaultOpen>
+      <Section icon="frame" title="Frame" defaultOpen>
         <div className={styles.frameGroupLabel}>Material</div>
         <IconChoiceGrid
           activeValue={activeFrameBoxStyle}
@@ -867,7 +944,7 @@ export function InspectorPanel({
         />
         {isGlassMaterial ? (
           <Slider
-            label="Transparency"
+            label="Opacity"
             min={0}
             max={1}
             step={0.01}
@@ -899,7 +976,7 @@ export function InspectorPanel({
         ) : null}
         {isGlassMaterial ? (
           <Slider
-            label="Outline"
+            label="Edge highlight"
             min={0}
             max={1}
             step={0.01}
@@ -914,14 +991,14 @@ export function InspectorPanel({
             }
           />
         ) : null}
-        <div className={styles.frameGroupLabel}>Shell</div>
+        <div className={styles.frameGroupLabel}>Window chrome</div>
         <FrameShellGrid
           activeValue={activeFrameShellPreset}
           onChange={onFramePresetChange}
         />
         {activeFrameShellPreset !== 'none' ? (
           <label className={styles.textField}>
-            <span>Title text</span>
+            <span>Window title</span>
             <input
               value={card.frame.chromeText ?? ''}
               placeholder="Auto from card name"
@@ -933,7 +1010,7 @@ export function InspectorPanel({
         ) : null}
         <div className={styles.frameGroupLabel}>Layout</div>
         <Slider
-          label="Canvas inset"
+          label="Outer padding"
           min={0}
           max={240}
           step={4}
@@ -968,8 +1045,7 @@ export function InspectorPanel({
           max={4}
           step={0.02}
           value={shadowSettings.strength}
-          format={formatPercent}
-          editScale={100}
+          format={formatPreciseMultiplier}
           onChange={(shadowStrength) => updateShadowSettings({ shadowStrength })}
         />
         <Slider
@@ -978,18 +1054,16 @@ export function InspectorPanel({
           max={4}
           step={0.02}
           value={shadowSettings.softness}
-          format={formatPercent}
-          editScale={100}
+          format={formatPreciseMultiplier}
           onChange={(shadowSoftness) => updateShadowSettings({ shadowSoftness })}
         />
         <Slider
-          label="Drop distance"
+          label="Offset"
           min={0}
           max={4}
           step={0.02}
           value={shadowSettings.distance}
-          format={formatPercent}
-          editScale={100}
+          format={formatPreciseMultiplier}
           onChange={(shadowDistance) => updateShadowSettings({ shadowDistance })}
         />
         <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
@@ -1001,9 +1075,25 @@ export function InspectorPanel({
         </div>
       </Section>
 
-      <Section icon="split" title="Canvas size">
+      <Section icon="aspect-ratio" title="Canvas size">
         {activeTarget ? (
           <>
+            <div className={styles.ratioModeGrid}>
+              {ASPECT_MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={
+                    option.value === activeAspectRatio
+                      ? `${styles.ratioButton} ${styles.ratioButtonActive}`
+                      : styles.ratioButton
+                  }
+                  onClick={() => onSurfaceAspectRatioChange(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <div className={styles.ratioGrid}>
               {ASPECT_RATIO_OPTIONS.map((option) => (
                 <button
@@ -1086,7 +1176,7 @@ export function InspectorPanel({
         ) : null}
       </Section>
 
-      <Section icon="wand" title="Text">
+      <Section icon="type" title="Text">
         <Segmented
           value={card.text.placement}
           options={TEXT_PLACEMENT_OPTIONS}
@@ -1152,7 +1242,7 @@ export function InspectorPanel({
             </div>
             <div className={styles.textStyleRow}>
               <label className={styles.selectField}>
-                <span>Paragraph font</span>
+                <span>Subtitle font</span>
                 <select
                   value={card.text.subtitleFont}
                   onChange={(event) =>
@@ -1172,7 +1262,7 @@ export function InspectorPanel({
                 </select>
               </label>
               <ColorSwatch
-                label="Paragraph color"
+                label="Subtitle color"
                 value={card.text.subtitleColor ?? palette.muted ?? palette.foreground}
                 onChange={(subtitleColor) => onTextChange({ subtitleColor })}
                 onReset={() => onTextChange({ subtitleColor: undefined })}

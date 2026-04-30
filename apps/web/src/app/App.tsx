@@ -87,6 +87,8 @@ const SUPPORTED_INPUT_MIME_TYPES = new Set([
 const SUPPORTED_INPUT_EXTENSION_PATTERN = /\.(png|jpe?g|webp)$/i;
 const SUPPORTED_INPUT_FORMAT_HINT = 'PNG, JPG, or WebP';
 const DEFAULT_PROJECT_NAME = 'Mantle Draft';
+const PROJECT_HISTORY_LIMIT = 80;
+const PROJECT_HISTORY_MERGE_WINDOW_MS = 650;
 
 type AppNoticeTone = 'success' | 'info' | 'warning' | 'error';
 
@@ -104,6 +106,15 @@ type AppFailure = Readonly<{
 type ExportSettingsMode = 'copy' | 'download';
 type ExportSliderFillStyle = CSSProperties & Record<'--export-slider-fill', string>;
 type PresetRailMode = 'built-in' | 'saved';
+type ProjectUpdater =
+  | RuntimeMantleProject
+  | ((current: RuntimeMantleProject) => RuntimeMantleProject);
+type ProjectHistoryState = {
+  past: RuntimeMantleProject[];
+  present: RuntimeMantleProject;
+  future: RuntimeMantleProject[];
+  lastCommitAt: number;
+};
 type MantleFileSystemFileHandle = {
   kind: 'file';
   getFile: () => Promise<File>;
@@ -134,6 +145,38 @@ type ImageImportIntent =
   | { mode: 'source-relink'; assetId: string }
   | { mode: 'background-new' }
   | { mode: 'background-relink'; assetId: string };
+
+function createInitialProject(): RuntimeMantleProject {
+  return {
+    ...createMantleProject({
+      name: DEFAULT_PROJECT_NAME,
+      brandName: 'Mantle'
+    })
+  };
+}
+
+function createProjectHistory(): ProjectHistoryState {
+  return {
+    past: [],
+    present: createInitialProject(),
+    future: [],
+    lastCommitAt: 0
+  };
+}
+
+function trimProjectHistory<T>(items: T[]): T[] {
+  return items.length > PROJECT_HISTORY_LIMIT
+    ? items.slice(items.length - PROJECT_HISTORY_LIMIT)
+    : items;
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement;
+}
 
 function isAppFailure(error: unknown): error is AppFailure {
   return (
@@ -363,10 +406,10 @@ function importFailureNotice(
 function relinkMissingAssetNotice(kind: 'source' | 'background'): Omit<AppNotice, 'id'> {
   return {
     tone: 'warning',
-    title: kind === 'background' ? 'Reimport background image' : 'Reimport source image',
+    title: kind === 'background' ? 'Reimport backdrop image' : 'Reimport source image',
     detail:
       kind === 'background'
-        ? 'Saved projects keep image metadata only. Relink the local background image before exporting.'
+        ? 'Saved projects keep image metadata only. Relink the local backdrop image before exporting.'
         : 'Saved projects keep image metadata only. Relink the local screenshot to render or export this card.'
   };
 }
@@ -413,8 +456,8 @@ function exportFailureNotice(
   if (/could not load background image asset/i.test(detail)) {
     return {
       tone: 'warning',
-      title: 'Reimport background image',
-      detail: 'Saved projects keep image metadata only. Relink the local background image before exporting.'
+      title: 'Reimport backdrop image',
+      detail: 'Saved projects keep image metadata only. Relink the local backdrop image before exporting.'
     };
   }
 
@@ -426,12 +469,12 @@ function exportFailureNotice(
 }
 
 export function App() {
-  const [project, setProject] = useState<RuntimeMantleProject>(() => ({
-    ...createMantleProject({
-      name: DEFAULT_PROJECT_NAME,
-      brandName: 'Mantle'
-    })
-  }));
+  const [projectHistory, setProjectHistory] = useState<ProjectHistoryState>(
+    createProjectHistory
+  );
+  const project = projectHistory.present;
+  const canUndo = projectHistory.past.length > 0;
+  const canRedo = projectHistory.future.length > 0;
   const [isDragging, setIsDragging] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [presetRailMode, setPresetRailMode] = useState<PresetRailMode>('built-in');
@@ -457,6 +500,57 @@ export function App() {
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const noticeTimerRef = useRef<number | null>(null);
   const imageImportIntentRef = useRef<ImageImportIntent>({ mode: 'auto' });
+
+  const setProject = useCallback((updater: ProjectUpdater) => {
+    setProjectHistory((history) => {
+      const nextProject =
+        typeof updater === 'function' ? updater(history.present) : updater;
+
+      if (Object.is(nextProject, history.present)) return history;
+
+      const now = Date.now();
+      const shouldMerge =
+        history.past.length > 0 &&
+        now - history.lastCommitAt <= PROJECT_HISTORY_MERGE_WINDOW_MS;
+
+      return {
+        past: shouldMerge
+          ? history.past
+          : trimProjectHistory([...history.past, history.present]),
+        present: nextProject,
+        future: [],
+        lastCommitAt: now
+      };
+    });
+  }, []);
+
+  const undoProject = useCallback(() => {
+    setProjectHistory((history) => {
+      const previous = history.past[history.past.length - 1];
+      if (!previous) return history;
+
+      return {
+        past: history.past.slice(0, -1),
+        present: previous,
+        future: [history.present, ...history.future].slice(0, PROJECT_HISTORY_LIMIT),
+        lastCommitAt: 0
+      };
+    });
+  }, []);
+
+  const redoProject = useCallback(() => {
+    setProjectHistory((history) => {
+      const next = history.future[0];
+      if (!next) return history;
+
+      return {
+        past: trimProjectHistory([...history.past, history.present]),
+        present: next,
+        future: history.future.slice(1),
+        lastCommitAt: 0
+      };
+    });
+  }, []);
 
   const clearNoticeTimer = useCallback(() => {
     if (noticeTimerRef.current == null) return;
@@ -508,6 +602,32 @@ export function App() {
       objectUrlsRef.current.clear();
     };
   }, [clearNoticeTimer]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+
+      const key = event.key.toLowerCase();
+      if (key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoProject();
+        } else {
+          undoProject();
+        }
+        return;
+      }
+
+      if (key === 'y' && !event.shiftKey) {
+        event.preventDefault();
+        redoProject();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [redoProject, undoProject]);
 
   useEffect(() => {
     const folderInput = userPresetFolderInputRef.current;
@@ -733,7 +853,7 @@ export function App() {
         card.id === current.activeCardId ? { ...card, ...patch } : card
       )
     }));
-  }, []);
+  }, [setProject]);
 
   const updateActiveSurfaceSize = useCallback(
     (
@@ -767,7 +887,7 @@ export function App() {
         );
       });
     },
-    []
+    [setProject]
   );
 
   const updateActiveSurfaceAspectRatio = useCallback(
@@ -806,7 +926,7 @@ export function App() {
         );
       });
     },
-    []
+    [setProject]
   );
 
   const importFile = useCallback(
@@ -838,10 +958,6 @@ export function App() {
             return;
           }
 
-          if (currentAsset.objectUrl && currentAsset.objectUrl !== objectUrl) {
-            revokeObjectUrl(currentAsset.objectUrl);
-          }
-
           setProject((current) => ({
             ...current,
             updatedAt: new Date().toISOString(),
@@ -863,11 +979,11 @@ export function App() {
             tone: 'success',
             title:
               resolvedIntent.mode === 'background-relink'
-                ? 'Background relinked'
+                ? 'Backdrop relinked'
                 : 'Image relinked',
             detail:
               resolvedIntent.mode === 'background-relink'
-                ? `${file.name} is attached as the background again.`
+                ? `${file.name} is attached as the backdrop again.`
                 : `${file.name} is attached to this card again.`
           });
           return;
@@ -912,11 +1028,11 @@ export function App() {
           tone: 'success',
           title:
             resolvedIntent.mode === 'background-new'
-              ? 'Background imported'
+              ? 'Backdrop imported'
               : 'Image imported',
           detail:
             resolvedIntent.mode === 'background-new'
-              ? `${file.name} is now the canvas background.`
+              ? `${file.name} is now the canvas backdrop.`
               : `${file.name} is ready to render.`
         });
       } catch (error) {
@@ -924,7 +1040,14 @@ export function App() {
         showNotice(importFailureNotice(file, toAppFailure(error)));
       }
     },
-    [project.assets, registerObjectUrl, resolveImageImportIntent, revokeObjectUrl, showNotice]
+    [
+      project.assets,
+      registerObjectUrl,
+      resolveImageImportIntent,
+      revokeObjectUrl,
+      setProject,
+      showNotice
+    ]
   );
 
   useEffect(() => {
@@ -1043,7 +1166,7 @@ export function App() {
       showNotice({
         tone: 'warning',
         title: 'Style cannot be saved yet',
-        detail: 'Image backgrounds are not portable presets yet. Choose a generated background first.'
+        detail: 'Image backdrops are not portable presets yet. Choose a generated backdrop first.'
       });
       return;
     }
@@ -1141,8 +1264,8 @@ export function App() {
     if (isMissingRenderableBackground(activeCard.background, activeBackgroundAsset)) {
       showNotice({
         tone: 'warning',
-        title: 'Reimport background image',
-        detail: 'Saved projects keep image metadata only. Relink the local background image before exporting.'
+        title: 'Reimport backdrop image',
+        detail: 'Saved projects keep image metadata only. Relink the local backdrop image before exporting.'
       });
       return;
     }
@@ -1322,6 +1445,29 @@ export function App() {
         </div>
 
         <div className={styles.topActions}>
+          <div className={styles.toolGroup}>
+            <button
+              type="button"
+              className={`${styles.ghostButton} ${styles.iconButton}`}
+              disabled={!canUndo}
+              onClick={undoProject}
+              title="Undo (Cmd/Ctrl+Z)"
+              aria-label="Undo"
+            >
+              <Icon name="undo" size={14} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`${styles.ghostButton} ${styles.iconButton}`}
+              disabled={!canRedo}
+              onClick={redoProject}
+              title="Redo (Shift+Cmd/Ctrl+Z)"
+              aria-label="Redo"
+            >
+              <Icon name="redo" size={14} aria-hidden="true" />
+            </button>
+          </div>
+
           <div className={styles.toolGroup}>
             <button
               type="button"
@@ -1539,8 +1685,8 @@ export function App() {
                     if (id === IMAGE_BACKGROUND_STYLE_ID) {
                       return {
                         id,
-                        label: 'Image Background',
-                        hint: 'Use your own background image',
+                        label: 'Image Backdrop',
+                        hint: 'Use your own backdrop image',
                         kind: 'image' as const
                       };
                     }

@@ -1,5 +1,6 @@
 import { useId } from 'react';
 
+import { Icon } from './Icon';
 import styles from './ColorSwatch.module.css';
 
 type ColorSwatchProps = {
@@ -49,8 +50,9 @@ export function ColorSwatch({
             disabled={resetDisabled}
             onClick={onReset}
             title="Reset to default"
+            aria-label="Reset to default"
           >
-            Reset
+            <Icon name="reset" size={13} aria-hidden="true" />
           </button>
         ) : null}
       </div>
