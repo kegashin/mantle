@@ -1141,7 +1141,7 @@
 
 /* ---------- Desktop gate ---------- */
 
-@media (max-width: 1180px), (pointer: coarse) {
+@media (max-width: 980px), (pointer: coarse) {
   .page {
     grid-template-rows: 1fr;
     min-height: 100dvh;
