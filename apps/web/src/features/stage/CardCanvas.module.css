@@ -21,6 +21,7 @@
 
 .stageHotspot,
 .frameEditor,
+.textEditor,
 .sourceEditor {
   position: absolute;
   box-sizing: border-box;
@@ -100,6 +101,10 @@
   transform: translateY(0);
 }
 
+.textHotspot {
+  z-index: 4;
+}
+
 .frameEditor {
   border: 1px solid rgba(245, 245, 242, 0.5);
   background: rgba(255, 255, 255, 0.008);
@@ -114,6 +119,43 @@
 
 .frameEditorDragging {
   cursor: grabbing;
+}
+
+.textEditor {
+  border: 1px solid rgba(246, 245, 242, 0.58);
+  background: rgba(255, 255, 255, 0.01);
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.32),
+    0 0 0 4px rgba(255, 255, 255, 0.035);
+  cursor: move;
+  touch-action: none;
+  z-index: 6;
+}
+
+.textEditorDragging {
+  cursor: grabbing;
+}
+
+.textInlineInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  font-kerning: normal;
+  cursor: move;
+  z-index: 1;
+}
+
+.textInlineInput:focus {
+  background: transparent;
 }
 
 .frameSnapGuide {
@@ -137,7 +179,9 @@
 }
 
 .frameScaleHandle,
-.frameRotateHandle {
+.frameRotateHandle,
+.textScaleHandle,
+.textRotateHandle {
   position: absolute;
   display: grid;
   place-items: center;
@@ -152,7 +196,13 @@
   height: 24px;
 }
 
-.frameScaleHandle::before {
+.textScaleHandle {
+  width: 24px;
+  height: 24px;
+}
+
+.frameScaleHandle::before,
+.textScaleHandle::before {
   content: '';
   display: block;
   width: 9px;
@@ -170,7 +220,9 @@
 }
 
 .frameScaleHandle:hover::before,
-.frameScaleHandle:focus-visible::before {
+.frameScaleHandle:focus-visible::before,
+.textScaleHandle:hover::before,
+.textScaleHandle:focus-visible::before {
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.5),
     0 6px 18px rgba(0, 0, 0, 0.44),
@@ -205,7 +257,9 @@
 }
 
 .frameScaleHandleE,
-.frameScaleHandleW {
+.frameScaleHandleW,
+.textScaleHandleE,
+.textScaleHandleW {
   top: 50%;
   width: 24px;
   height: 48px;
@@ -213,7 +267,9 @@
 }
 
 .frameScaleHandleE::before,
-.frameScaleHandleW::before {
+.frameScaleHandleW::before,
+.textScaleHandleE::before,
+.textScaleHandleW::before {
   width: 5px;
   height: 30px;
   border-radius: var(--radius-pill);
@@ -229,35 +285,50 @@
   transform: translate(-50%, -50%);
 }
 
-.frameScaleHandleNW {
+.textScaleHandleE {
+  right: 0;
+  transform: translate(50%, -50%);
+}
+
+.textScaleHandleW {
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.frameScaleHandleNW,
+.textScaleHandleNW {
   left: 0;
   top: 0;
   cursor: nwse-resize;
   transform: translate(-50%, -50%);
 }
 
-.frameScaleHandleNE {
+.frameScaleHandleNE,
+.textScaleHandleNE {
   right: 0;
   top: 0;
   cursor: nesw-resize;
   transform: translate(50%, -50%);
 }
 
-.frameScaleHandleSW {
+.frameScaleHandleSW,
+.textScaleHandleSW {
   left: 0;
   bottom: 0;
   cursor: nesw-resize;
   transform: translate(-50%, 50%);
 }
 
-.frameScaleHandleSE {
+.frameScaleHandleSE,
+.textScaleHandleSE {
   right: 0;
   bottom: 0;
   cursor: nwse-resize;
   transform: translate(50%, 50%);
 }
 
-.frameRotateHandle {
+.frameRotateHandle,
+.textRotateHandle {
   left: 50%;
   top: -50px;
   width: 30px;
@@ -267,7 +338,8 @@
   transform: translateX(-50%);
 }
 
-.frameRotateHandle::before {
+.frameRotateHandle::before,
+.textRotateHandle::before {
   content: '';
   position: absolute;
   left: 50%;
@@ -278,7 +350,8 @@
   transform: translateX(-50%);
 }
 
-.frameRotateHandle::after {
+.frameRotateHandle::after,
+.textRotateHandle::after {
   content: '';
   width: 18px;
   height: 18px;
@@ -298,7 +371,10 @@
 
 .frameRotateHandle:hover::after,
 .frameRotateHandle:focus-visible::after,
-.frameRotateHandleSnapped::after {
+.frameRotateHandleSnapped::after,
+.textRotateHandle:hover::after,
+.textRotateHandle:focus-visible::after,
+.textRotateHandleSnapped::after {
   box-shadow:
     0 0 0 1px rgba(246, 245, 242, 0.72),
     0 10px 24px rgba(0, 0, 0, 0.48),
@@ -308,7 +384,8 @@
   transform: scale(1.08);
 }
 
-.frameRotationBadge {
+.frameRotationBadge,
+.textRotationBadge {
   position: absolute;
   left: 50%;
   top: -82px;
@@ -334,7 +411,12 @@
   transform: translateX(-50%) rotate(var(--frame-editor-counter-rotation, 0deg));
 }
 
-.frameEditorToolbar {
+.textRotationBadge {
+  transform: translateX(-50%) rotate(var(--text-editor-counter-rotation, 0deg));
+}
+
+.frameEditorToolbar,
+.textEditorToolbar {
   position: absolute;
   display: inline-flex;
   align-items: center;
@@ -355,7 +437,8 @@
   transform: translateX(-50%);
 }
 
-.frameToolButton {
+.frameToolButton,
+.textToolButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -374,13 +457,15 @@
     color var(--dur-fast) var(--ease-out);
 }
 
-.frameToolButton:hover {
+.frameToolButton:hover,
+.textToolButton:hover {
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.09);
   color: var(--color-text);
 }
 
-.frameDoneButton {
+.frameDoneButton,
+.textDoneButton {
   color: var(--color-text);
 }
 

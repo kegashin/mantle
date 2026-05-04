@@ -505,7 +505,10 @@ export function cloneFrame(frame: MantleFrame): MantleFrame {
 }
 
 export function cloneText(text: MantleText): MantleText {
-  return { ...text };
+  return {
+    ...text,
+    transform: text.transform ? { ...text.transform } : undefined
+  };
 }
 
 export function updateBackgroundParam(

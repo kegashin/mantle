@@ -14,7 +14,9 @@ import type {
   MantleRenderableAsset,
   MantleSourceCrop,
   MantleSourcePlacement,
-  MantleSurfaceTarget
+  MantleSurfaceTarget,
+  MantleTextLayer,
+  MantleTextTransform
 } from '@mantle/schemas/model';
 import {
   useEffect,
@@ -41,9 +43,17 @@ const FRAME_SNAP_DISTANCE_PX = 6;
 const STAGE_ACTIONS_ESTIMATED_WIDTH = 132;
 const STAGE_ACTIONS_ESTIMATED_HEIGHT = 40;
 const STAGE_ACTIONS_STAGE_INSET = 12;
+const STAGE_ACTIONS_AVOID_GAP = 10;
 const FRAME_TOOLBAR_ESTIMATED_WIDTH = 132;
 const FRAME_TOOLBAR_ESTIMATED_HEIGHT = 42;
 const FRAME_TOOLBAR_STAGE_INSET = 12;
+const TEXT_TOOLBAR_ESTIMATED_WIDTH = 132;
+const TEXT_TOOLBAR_ESTIMATED_HEIGHT = 42;
+const TEXT_TOOLBAR_STAGE_INSET = 12;
+const TEXT_WIDTH_MIN = 0.08;
+const TEXT_WIDTH_MAX = 1;
+const TEXT_SCALE_MIN = 0.5;
+const TEXT_SCALE_MAX = 2;
 const FRAME_ROTATION_SNAP_DEGREES = 2;
 const FRAME_ROTATION_SNAP_ANCHORS = [
   -180,
@@ -79,6 +89,9 @@ type CardCanvasProps = {
   onRelinkSource?: () => void;
   onSourcePlacementChange?: (placement: MantleSourcePlacement) => void;
   onFrameTransformChange?: (transform: MantleFrameTransform) => void;
+  onTextChange?: (patch: Partial<MantleCard['text']>) => void;
+  onTextLayerChange?: (layerId: string, patch: Partial<MantleTextLayer>) => void;
+  onActiveTextLayerChange?: (layerId: string | undefined) => void;
 };
 
 type PreviewRenderState = {
@@ -87,6 +100,7 @@ type PreviewRenderState = {
   asset?: MantleRenderableAsset | undefined;
   backgroundAsset?: MantleRenderableAsset | undefined;
   hasAssetSource: boolean;
+  hiddenTextLayerIds?: string[] | undefined;
 };
 
 type PreviewWorkerJob = {
@@ -119,6 +133,11 @@ type PreviewSurface = {
   baseFrameRect: StageRect;
   baseFrameCssRect: StageRect;
   frameRotation: number;
+  textRect?: StageRect | undefined;
+  textCssRect?: StageRect | undefined;
+  textRotation: number;
+  textLayerRects: Array<StageRect & { id: string; rotation: number }>;
+  textLayerCssRects: Array<StageRect & { id: string; rotation: number }>;
 };
 
 type SourceDragState = {
@@ -130,6 +149,8 @@ type SourceDragState = {
 
 type FrameResizeHandle = 'n' | 'e' | 's' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 type FrameDragMode = 'move' | 'resize' | 'rotate';
+type TextResizeHandle = 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
+type TextDragMode = 'move' | 'resize' | 'rotate';
 
 type FrameDragState = {
   pointerId: number;
@@ -144,6 +165,26 @@ type FrameDragState = {
 type FrameSnapGuide = {
   axis: 'x' | 'y';
   position: number;
+};
+
+type TextDraftState = {
+  rect: StageRect;
+  transform: MantleTextTransform;
+  width: number;
+  scale: number;
+};
+
+type TextDragState = {
+  pointerId: number;
+  mode: TextDragMode;
+  handle?: TextResizeHandle | undefined;
+  startX: number;
+  startY: number;
+  rect: StageRect;
+  transform: MantleTextTransform;
+  width: number;
+  scale: number;
+  startAngle: number;
 };
 
 class PreviewRenderCancelledError extends Error {
@@ -265,6 +306,89 @@ function normalizeFrameTransform(
   };
 }
 
+function normalizeTextTransform(
+  transform: MantleTextTransform | undefined
+): MantleTextTransform {
+  return {
+    x: clamp(transform?.x ?? 0.5, -1, 2),
+    y: clamp(transform?.y ?? 0.5, -1, 2),
+    rotation: normalizeRotation(transform?.rotation ?? 0)
+  };
+}
+
+function resolveEditorTextFontStack(font: MantleTextLayer['font']): string {
+  switch (font) {
+    case 'system':
+      return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    case 'display':
+      return '"Fraunces Variable", "Fraunces", "New York", "Iowan Old Style", Georgia, serif';
+    case 'rounded':
+      return '"Nunito Variable", "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
+    case 'serif':
+      return 'ui-serif, Georgia, "Times New Roman", serif';
+    case 'editorial':
+      return '"Instrument Serif", "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
+    case 'slab':
+      return '"Roboto Slab Variable", "Roboto Slab", Rockwell, "Courier New", ui-serif, serif';
+    case 'mono':
+      return '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+    case 'code':
+      return '"JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace';
+    case 'condensed':
+      return '"Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", Arial, sans-serif';
+    case 'sans':
+    default:
+      return '"Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  }
+}
+
+function resolveEditorLetterSpacingPx(
+  font: MantleTextLayer['font'],
+  fontSize: number
+): number {
+  if (font === 'mono' || font === 'code') return fontSize * 0.005;
+  if (font === 'condensed') return fontSize * 0.012;
+  const norm = Math.min(1, Math.max(0, (fontSize - 24) / 80));
+  return fontSize * (-0.012 - norm * 0.012);
+}
+
+function textTransformFromCssRect({
+  rect,
+  canvasRect,
+  rotation
+}: {
+  rect: StageRect;
+  canvasRect: StageRect;
+  rotation: number;
+}): MantleTextTransform {
+  return normalizeTextTransform({
+    x: (rect.x + rect.width / 2 - canvasRect.x) / Math.max(1, canvasRect.width),
+    y: (rect.y + rect.height / 2 - canvasRect.y) / Math.max(1, canvasRect.height),
+    rotation
+  });
+}
+
+function textCssRectFromDraft(draft: TextDraftState | null): StageRect | undefined {
+  return draft?.rect;
+}
+
+function textHotspotStyle({
+  rect,
+  rotation
+}: {
+  rect: StageRect;
+  rotation: number;
+}): CSSProperties {
+  return {
+    left: `${rect.x}px`,
+    top: `${rect.y}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    transform: `rotate(${rotation}deg)`,
+    '--stage-hotspot-counter-rotation': `${-rotation}deg`
+  } as CSSProperties;
+}
+
 function applyFrameTransformToCssRect({
   rect,
   canvasRect,
@@ -282,6 +406,49 @@ function applyFrameTransformToCssRect({
     y: rect.y + (rect.height - height) / 2 + transform.y * canvasRect.height,
     width,
     height
+  };
+}
+
+function snapRectToCanvas({
+  rect,
+  canvasRect,
+  includeEdges
+}: {
+  rect: StageRect;
+  canvasRect: StageRect;
+  includeEdges: boolean;
+}): { rect: StageRect; guides: FrameSnapGuide[] } {
+  const rectCenterX = rect.x + rect.width / 2;
+  const rectCenterY = rect.y + rect.height / 2;
+  const canvasCenterX = canvasRect.x + canvasRect.width / 2;
+  const canvasCenterY = canvasRect.y + canvasRect.height / 2;
+  const xSources = includeEdges
+    ? [rect.x, rectCenterX, rect.x + rect.width]
+    : [rectCenterX];
+  const ySources = includeEdges
+    ? [rect.y, rectCenterY, rect.y + rect.height]
+    : [rectCenterY];
+  const xTargets = includeEdges
+    ? [canvasRect.x, canvasCenterX, canvasRect.x + canvasRect.width]
+    : [canvasCenterX];
+  const yTargets = includeEdges
+    ? [canvasRect.y, canvasCenterY, canvasRect.y + canvasRect.height]
+    : [canvasCenterY];
+  const xSnap = findNearestSnap({ sources: xSources, targets: xTargets });
+  const ySnap = findNearestSnap({ sources: ySources, targets: yTargets });
+
+  if (!xSnap && !ySnap) return { rect, guides: [] };
+
+  return {
+    rect: {
+      ...rect,
+      x: rect.x + (xSnap?.delta ?? 0),
+      y: rect.y + (ySnap?.delta ?? 0)
+    },
+    guides: [
+      ...(xSnap ? [{ axis: 'x' as const, position: xSnap.position }] : []),
+      ...(ySnap ? [{ axis: 'y' as const, position: ySnap.position }] : [])
+    ]
   };
 }
 
@@ -343,6 +510,126 @@ function rotatedBoundsAround(
     width: maxX - minX,
     height: maxY - minY
   };
+}
+
+function expandedRect(rect: StageRect, inset: number): StageRect {
+  return {
+    x: rect.x - inset,
+    y: rect.y - inset,
+    width: rect.width + inset * 2,
+    height: rect.height + inset * 2
+  };
+}
+
+function stageRectFromCenter({
+  center,
+  width,
+  height
+}: {
+  center: { x: number; y: number };
+  width: number;
+  height: number;
+}): StageRect {
+  return {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    width,
+    height
+  };
+}
+
+function stageRectsOverlap(left: StageRect, right: StageRect): boolean {
+  return (
+    left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y
+  );
+}
+
+function resolveStageActionsTarget({
+  preferred,
+  canvasRect,
+  avoidRects
+}: {
+  preferred: { x: number; y: number };
+  canvasRect: StageRect;
+  avoidRects: StageRect[];
+}): { x: number; y: number } {
+  const minX =
+    canvasRect.x + STAGE_ACTIONS_STAGE_INSET + STAGE_ACTIONS_ESTIMATED_WIDTH / 2;
+  const maxX =
+    canvasRect.x +
+    canvasRect.width -
+    STAGE_ACTIONS_STAGE_INSET -
+    STAGE_ACTIONS_ESTIMATED_WIDTH / 2;
+  const minY =
+    canvasRect.y + STAGE_ACTIONS_STAGE_INSET + STAGE_ACTIONS_ESTIMATED_HEIGHT / 2;
+  const maxY =
+    canvasRect.y +
+    canvasRect.height -
+    STAGE_ACTIONS_STAGE_INSET -
+    STAGE_ACTIONS_ESTIMATED_HEIGHT / 2;
+  const clampTarget = (target: { x: number; y: number }) => ({
+    x: clampToRange(target.x, minX, maxX),
+    y: clampToRange(target.y, minY, maxY)
+  });
+  const actionOverlapsText = (target: { x: number; y: number }) => {
+    const actionRect = stageRectFromCenter({
+      center: target,
+      width: STAGE_ACTIONS_ESTIMATED_WIDTH,
+      height: STAGE_ACTIONS_ESTIMATED_HEIGHT
+    });
+    return avoidRects.some((rect) =>
+      stageRectsOverlap(actionRect, expandedRect(rect, STAGE_ACTIONS_AVOID_GAP))
+    );
+  };
+  const preferredTarget = clampTarget(preferred);
+
+  if (!actionOverlapsText(preferredTarget)) return preferredTarget;
+
+  const candidates = avoidRects.flatMap((rect) => {
+    const expanded = expandedRect(rect, STAGE_ACTIONS_AVOID_GAP);
+    const centerX = rect.x + rect.width / 2;
+    const centerY = rect.y + rect.height / 2;
+    return [
+      {
+        x: preferredTarget.x,
+        y: expanded.y - STAGE_ACTIONS_ESTIMATED_HEIGHT / 2
+      },
+      {
+        x: preferredTarget.x,
+        y: expanded.y + expanded.height + STAGE_ACTIONS_ESTIMATED_HEIGHT / 2
+      },
+      {
+        x: expanded.x - STAGE_ACTIONS_ESTIMATED_WIDTH / 2,
+        y: centerY
+      },
+      {
+        x: expanded.x + expanded.width + STAGE_ACTIONS_ESTIMATED_WIDTH / 2,
+        y: centerY
+      },
+      {
+        x: centerX,
+        y: expanded.y - STAGE_ACTIONS_ESTIMATED_HEIGHT / 2
+      },
+      {
+        x: centerX,
+        y: expanded.y + expanded.height + STAGE_ACTIONS_ESTIMATED_HEIGHT / 2
+      }
+    ];
+  });
+
+  return (
+    candidates
+      .map(clampTarget)
+      .filter((target) => !actionOverlapsText(target))
+      .sort((left, right) => {
+        const leftDistance = Math.hypot(left.x - preferred.x, left.y - preferred.y);
+        const rightDistance = Math.hypot(right.x - preferred.x, right.y - preferred.y);
+        return leftDistance - rightDistance;
+      })[0] ?? preferredTarget
+  );
 }
 
 function findNearestSnap({
@@ -424,30 +711,28 @@ function stageActionsStyle({
   contentRect,
   frameRect,
   canvasRect,
-  rotation
+  rotation,
+  avoidRects = []
 }: {
   contentRect: StageRect;
   frameRect: StageRect;
   canvasRect: StageRect;
   rotation: number;
+  avoidRects?: StageRect[] | undefined;
 }): CSSProperties {
   const origin = {
     x: frameRect.x + frameRect.width / 2,
     y: frameRect.y + frameRect.height / 2
   };
   const bounds = rotatedBoundsAround(contentRect, rotation, origin);
-  const target = {
-    x: clampToRange(
-      bounds.x + bounds.width / 2,
-      canvasRect.x + STAGE_ACTIONS_STAGE_INSET + STAGE_ACTIONS_ESTIMATED_WIDTH / 2,
-      canvasRect.x + canvasRect.width - STAGE_ACTIONS_STAGE_INSET - STAGE_ACTIONS_ESTIMATED_WIDTH / 2
-    ),
-    y: clampToRange(
-      bounds.y + bounds.height / 2,
-      canvasRect.y + STAGE_ACTIONS_STAGE_INSET + STAGE_ACTIONS_ESTIMATED_HEIGHT / 2,
-      canvasRect.y + canvasRect.height - STAGE_ACTIONS_STAGE_INSET - STAGE_ACTIONS_ESTIMATED_HEIGHT / 2
-    )
-  };
+  const target = resolveStageActionsTarget({
+    preferred: {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2
+    },
+    canvasRect,
+    avoidRects
+  });
   const localTarget = rotatePointAround(target, origin, -rotation);
 
   return {
@@ -484,6 +769,34 @@ function frameToolbarStyle({
   };
 }
 
+function textToolbarStyle({
+  textRect,
+  canvasRect
+}: {
+  textRect: StageRect;
+  canvasRect: StageRect;
+}): CSSProperties {
+  const gap = 10;
+  const left = clampToRange(
+    textRect.x + textRect.width / 2,
+    canvasRect.x + TEXT_TOOLBAR_STAGE_INSET + TEXT_TOOLBAR_ESTIMATED_WIDTH / 2,
+    canvasRect.x + canvasRect.width - TEXT_TOOLBAR_STAGE_INSET - TEXT_TOOLBAR_ESTIMATED_WIDTH / 2
+  );
+  const topAbove = textRect.y - TEXT_TOOLBAR_ESTIMATED_HEIGHT - gap;
+  const topBelow = textRect.y + textRect.height + gap;
+  const hasRoomAbove = topAbove >= canvasRect.y + TEXT_TOOLBAR_STAGE_INSET;
+  const top = clampToRange(
+    hasRoomAbove ? topAbove : topBelow,
+    canvasRect.y + TEXT_TOOLBAR_STAGE_INSET,
+    canvasRect.y + canvasRect.height - TEXT_TOOLBAR_STAGE_INSET - TEXT_TOOLBAR_ESTIMATED_HEIGHT
+  );
+
+  return {
+    left: `${left}px`,
+    top: `${top}px`
+  };
+}
+
 function localFrameDelta({
   deltaX,
   deltaY,
@@ -501,6 +814,15 @@ function localFrameDelta({
     x: deltaX * cos - deltaY * sin,
     y: deltaX * sin + deltaY * cos
   };
+}
+
+function textTransformAngle(
+  event: Pick<PointerEvent, 'clientX' | 'clientY'>,
+  textRect: StageRect
+): number {
+  const centerX = textRect.x + textRect.width / 2;
+  const centerY = textRect.y + textRect.height / 2;
+  return Math.atan2(event.clientY - centerY, event.clientX - centerX);
 }
 
 function resizeHandleDirections(handle: FrameResizeHandle): {
@@ -681,6 +1003,20 @@ function previewSurfaceChanged(
   const keys: Array<keyof StageRect> = ['x', 'y', 'width', 'height'];
   const rectChanged = (left: StageRect, right: StageRect) =>
     keys.some((key) => Math.abs(left[key] - right[key]) > 0.5);
+  const layerRectsChanged = (
+    left: PreviewSurface['textLayerCssRects'],
+    right: PreviewSurface['textLayerCssRects']
+  ) =>
+    left.length !== right.length ||
+    left.some((leftRect, index) => {
+      const rightRect = right[index];
+      return (
+        !rightRect ||
+        leftRect.id !== rightRect.id ||
+        rectChanged(leftRect, rightRect) ||
+        Math.abs(leftRect.rotation - rightRect.rotation) > 0.1
+      );
+    });
 
   return (
     current.canvasWidth !== next.canvasWidth ||
@@ -692,7 +1028,17 @@ function previewSurfaceChanged(
     rectChanged(current.frameCssRect, next.frameCssRect) ||
     rectChanged(current.baseFrameRect, next.baseFrameRect) ||
     rectChanged(current.baseFrameCssRect, next.baseFrameCssRect) ||
-    Math.abs(current.frameRotation - next.frameRotation) > 0.1
+    Boolean(current.textRect) !== Boolean(next.textRect) ||
+    Boolean(current.textCssRect) !== Boolean(next.textCssRect) ||
+    (current.textRect && next.textRect
+      ? rectChanged(current.textRect, next.textRect)
+      : false) ||
+    (current.textCssRect && next.textCssRect
+      ? rectChanged(current.textCssRect, next.textCssRect)
+      : false) ||
+    layerRectsChanged(current.textLayerCssRects, next.textLayerCssRects) ||
+    Math.abs(current.frameRotation - next.frameRotation) > 0.1 ||
+    Math.abs(current.textRotation - next.textRotation) > 0.1
   );
 }
 
@@ -764,7 +1110,10 @@ function createPreviewWorkerClient(): PreviewWorkerClient {
         contentRect: response.contentRect,
         frameRect: response.frameRect,
         baseFrameRect: response.baseFrameRect,
-        frameRotation: response.frameRotation
+        frameRotation: response.frameRotation,
+        textRect: response.textRect,
+        textRotation: response.textRotation,
+        textLayerRects: response.textLayerRects
       });
     } else {
       job.reject(
@@ -837,19 +1186,31 @@ export function CardCanvas({
   onChooseSource,
   onRelinkSource,
   onSourcePlacementChange,
-  onFrameTransformChange
+  onFrameTransformChange,
+  onTextChange,
+  onTextLayerChange,
+  onActiveTextLayerChange
 }: CardCanvasProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewWorkerRef = useRef<PreviewWorkerClient | null>(null);
   const previewRendererRef = useRef<MantlePreviewRenderer | null>(null);
+  const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const sourceDragRef = useRef<SourceDragState | null>(null);
   const frameDragRef = useRef<FrameDragState | null>(null);
+  const textDragRef = useRef<TextDragState | null>(null);
   const sourceCommitTimerRef = useRef<number | null>(null);
   const sourceDraftFrameRef = useRef(0);
   const frameTransformFrameRef = useRef(0);
+  const textTransformFrameRef = useRef(0);
+  const lastActiveTextLayerIdRef = useRef<string | undefined>(undefined);
   const pendingFrameTransformRef = useRef<MantleFrameTransform | null>(null);
+  const pendingTextPatchRef = useRef<Partial<MantleCard['text']> | null>(null);
+  const pendingTextLayerPatchRef = useRef<{
+    id: string;
+    patch: Partial<MantleTextLayer>;
+  } | null>(null);
   const pendingSourceDraftRef = useRef<MantleSourceCrop | null>(null);
   const latestSourceDraftRef = useRef<MantleSourceCrop | null>(null);
   const renderSeqRef = useRef(0);
@@ -860,15 +1221,26 @@ export function CardCanvas({
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface | null>(null);
   const [sourceEditorOpen, setSourceEditorOpen] = useState(false);
   const [frameEditorOpen, setFrameEditorOpen] = useState(false);
+  const [textEditorOpen, setTextEditorOpen] = useState(false);
   const [sourceDragging, setSourceDragging] = useState(false);
   const [frameDragging, setFrameDragging] = useState(false);
+  const [textDragging, setTextDragging] = useState(false);
   const [sourceDraftCrop, setSourceDraftCrop] = useState<MantleSourceCrop | null>(null);
   const [sourceSnapGuides, setSourceSnapGuides] = useState<FrameSnapGuide[]>([]);
   const [frameDraftTransform, setFrameDraftTransform] =
     useState<MantleFrameTransform | null>(null);
+  const [textDraft, setTextDraft] = useState<TextDraftState | null>(null);
   const [frameSnapGuides, setFrameSnapGuides] = useState<FrameSnapGuide[]>([]);
+  const [textSnapGuides, setTextSnapGuides] = useState<FrameSnapGuide[]>([]);
   const [frameRotationSnapAngle, setFrameRotationSnapAngle] =
     useState<number | null>(null);
+  const [textRotationSnapAngle, setTextRotationSnapAngle] =
+    useState<number | null>(null);
+  const textLayers = card.textLayers ?? [];
+  const activeTextLayer =
+    textLayers.find((layer) => layer.id === card.activeTextLayerId) ?? textLayers[0];
+  const activeTextLayerId = activeTextLayer?.id;
+  const editingTextLayer = Boolean(activeTextLayer);
   const hasAssetSource = Boolean(asset?.objectUrl);
   const isMissingSource = Boolean(card.sourceAssetId && !hasAssetSource);
 
@@ -887,6 +1259,7 @@ export function CardCanvas({
       }
       cancelAnimationFrame(sourceDraftFrameRef.current);
       cancelAnimationFrame(frameTransformFrameRef.current);
+      cancelAnimationFrame(textTransformFrameRef.current);
       previewWorkerRef.current?.dispose();
       previewWorkerRef.current = null;
       previewRendererRef.current?.dispose();
@@ -908,6 +1281,48 @@ export function CardCanvas({
   }, [hasAssetSource]);
 
   useEffect(() => {
+    if (activeTextLayerId) return;
+    if (card.text.placement !== 'none' && (card.text.title?.trim() || card.text.subtitle?.trim())) {
+      return;
+    }
+    setTextEditorOpen(false);
+    setTextDragging(false);
+    setTextDraft(null);
+    setTextSnapGuides([]);
+    setTextRotationSnapAngle(null);
+    textDragRef.current = null;
+    pendingTextPatchRef.current = null;
+    pendingTextLayerPatchRef.current = null;
+  }, [activeTextLayerId, card.text.placement, card.text.title, card.text.subtitle]);
+
+  useEffect(() => {
+    if (!activeTextLayerId || activeTextLayerId === lastActiveTextLayerIdRef.current) {
+      lastActiveTextLayerIdRef.current = activeTextLayerId;
+      return;
+    }
+    lastActiveTextLayerIdRef.current = activeTextLayerId;
+    flushFrameTransform();
+    flushSourceDraft();
+    setFrameEditorOpen(false);
+    setSourceEditorOpen(false);
+    setTextEditorOpen(true);
+  }, [activeTextLayerId]);
+
+  useEffect(() => {
+    if (!textEditorOpen || !activeTextLayerId) return;
+
+    const frameId = requestAnimationFrame(() => {
+      const input = textInputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      const cursorPosition = input.value.length;
+      input.setSelectionRange(cursorPosition, cursorPosition);
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [activeTextLayerId, textEditorOpen]);
+
+  useEffect(() => {
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return undefined;
@@ -925,7 +1340,10 @@ export function CardCanvas({
       contentRect: StageRect,
       frameRect: StageRect,
       baseFrameRect: StageRect,
-      frameRotation: number
+      frameRotation: number,
+      textRect: StageRect | undefined,
+      textRotation: number,
+      textLayerRects: PreviewWorkerResult['textLayerRects'] = []
     ) => {
       const wrapRect = wrap.getBoundingClientRect();
       const canvasRect = canvas.getBoundingClientRect();
@@ -961,7 +1379,26 @@ export function CardCanvas({
           width: baseFrameRect.width * scaleX,
           height: baseFrameRect.height * scaleY
         },
-        frameRotation
+        frameRotation,
+        textRect,
+        textCssRect: textRect
+          ? {
+              x: canvasRect.left - wrapRect.left + textRect.x * scaleX,
+              y: canvasRect.top - wrapRect.top + textRect.y * scaleY,
+              width: textRect.width * scaleX,
+              height: textRect.height * scaleY
+            }
+          : undefined,
+        textRotation,
+        textLayerRects,
+        textLayerCssRects: textLayerRects.map((rect) => ({
+          id: rect.id,
+          x: canvasRect.left - wrapRect.left + rect.x * scaleX,
+          y: canvasRect.top - wrapRect.top + rect.y * scaleY,
+          width: rect.width * scaleX,
+          height: rect.height * scaleY,
+          rotation: rect.rotation
+        }))
       };
 
       setPreviewSurface((current) =>
@@ -976,7 +1413,10 @@ export function CardCanvas({
       contentRect: StageRect,
       frameRect: StageRect,
       baseFrameRect: StageRect,
-      frameRotation: number
+      frameRotation: number,
+      textRect: StageRect | undefined,
+      textRotation: number,
+      textLayerRects: PreviewWorkerResult['textLayerRects'] = []
     ) => {
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
@@ -993,7 +1433,10 @@ export function CardCanvas({
         contentRect,
         frameRect,
         baseFrameRect,
-        frameRotation
+        frameRotation,
+        textRect,
+        textRotation,
+        textLayerRects
       );
     };
 
@@ -1042,7 +1485,8 @@ export function CardCanvas({
         asset: state.asset,
         backgroundAsset: state.backgroundAsset,
         scale,
-        showEmptyPlaceholderText: state.hasAssetSource
+        showEmptyPlaceholderText: state.hasAssetSource,
+        hiddenTextLayerIds: state.hiddenTextLayerIds
       };
 
       try {
@@ -1075,7 +1519,10 @@ export function CardCanvas({
                 rendered.contentRect,
                 rendered.frameRect,
                 rendered.baseFrameRect,
-                rendered.frameRotation
+                rendered.frameRotation,
+                rendered.textRect,
+                rendered.textRotation,
+                rendered.textLayerRects
               );
               renderedInWorker = true;
             } finally {
@@ -1120,7 +1567,10 @@ export function CardCanvas({
             rendered.contentRect,
             rendered.frameRect,
             rendered.baseFrameRect,
-            rendered.frameRotation
+            rendered.frameRotation,
+            rendered.textRect,
+            rendered.textRotation,
+            rendered.textLayerRects
           );
         }
 
@@ -1176,7 +1626,15 @@ export function CardCanvas({
 
   useEffect(() => {
     schedulePreviewRenderRef.current?.();
-  }, [card, target, asset, backgroundAsset, hasAssetSource]);
+  }, [
+    card,
+    target,
+    asset,
+    backgroundAsset,
+    hasAssetSource,
+    textEditorOpen,
+    activeTextLayerId
+  ]);
 
   const sourceEditorStyle: CSSProperties | undefined = previewSurface
     ? {
@@ -1194,15 +1652,6 @@ export function CardCanvas({
             : `${previewSurface.frameCssRect.x + previewSurface.frameCssRect.width / 2 - previewSurface.contentCssRect.x}px ${previewSurface.frameCssRect.y + previewSurface.frameCssRect.height / 2 - previewSurface.contentCssRect.y}px`
       }
     : undefined;
-  const stageHotspotActionsStyle =
-    previewSurface
-      ? stageActionsStyle({
-          contentRect: previewSurface.contentCssRect,
-          frameRect: previewSurface.frameCssRect,
-          canvasRect: previewSurface.canvasCssRect,
-          rotation: previewSurface.frameRotation
-        })
-      : undefined;
   const canEditSource =
     hasAssetSource &&
     Boolean(previewSurface) &&
@@ -1254,6 +1703,103 @@ export function CardCanvas({
           rotation: visibleFrameTransform.rotation
         })
       : undefined;
+  const activeTextLayerCssRect =
+    activeTextLayerId && previewSurface
+      ? previewSurface.textLayerCssRects.find((rect) => rect.id === activeTextLayerId)
+      : undefined;
+  const visibleTextCssRect =
+    textCssRectFromDraft(textDraft) ?? activeTextLayerCssRect ?? previewSurface?.textCssRect;
+  const visibleTextRotation =
+    textDraft?.transform.rotation ??
+    activeTextLayerCssRect?.rotation ??
+    previewSurface?.textRotation ??
+    0;
+  const textEditorStyle: CSSProperties | undefined = visibleTextCssRect
+    ? ({
+        ...textHotspotStyle({
+          rect: visibleTextCssRect,
+          rotation: visibleTextRotation
+        }),
+        '--text-editor-counter-rotation': `${-visibleTextRotation}deg`
+      } as CSSProperties)
+    : undefined;
+  const textEditorFontSize =
+    activeTextLayer && previewSurface
+      ? Math.max(
+          32,
+          Math.round(
+            Math.min(previewSurface.canvasWidth, previewSurface.canvasHeight * 1.45) *
+              0.04 *
+              activeTextLayer.scale
+          )
+        ) *
+        (previewSurface.canvasCssRect.width / Math.max(1, previewSurface.canvasWidth))
+      : 0;
+  const textEditorLineCount =
+    visibleTextCssRect && textEditorFontSize > 0
+      ? Math.max(1, Math.round(visibleTextCssRect.height / (textEditorFontSize * 1.1)))
+      : 1;
+  const textInlineInputStyle: CSSProperties | undefined =
+    activeTextLayer && textEditorFontSize > 0
+      ? {
+          color: 'transparent',
+          caretColor: activeTextLayer.color ?? card.background.palette.foreground,
+          fontFamily: resolveEditorTextFontStack(activeTextLayer.font),
+          fontSize: `${textEditorFontSize}px`,
+          fontWeight: 600,
+          letterSpacing: `${resolveEditorLetterSpacingPx(
+            activeTextLayer.font,
+            textEditorFontSize
+          )}px`,
+          lineHeight: `${textEditorFontSize * (textEditorLineCount <= 1 ? 1.06 : 1.16)}px`,
+          textAlign: activeTextLayer.align,
+          WebkitTextFillColor: 'transparent'
+        }
+      : undefined;
+  const rotatedTextBounds =
+    visibleTextCssRect && visibleTextRotation !== 0
+      ? rotatedBounds(visibleTextCssRect, visibleTextRotation)
+      : visibleTextCssRect;
+  const textEditorToolbarStyle =
+    rotatedTextBounds && previewSurface
+      ? textToolbarStyle({
+          textRect: rotatedTextBounds,
+          canvasRect: previewSurface.canvasCssRect
+        })
+      : undefined;
+  const textObstacleRects = previewSurface
+    ? [
+        ...previewSurface.textLayerCssRects.map((rect) => {
+          const draftRect =
+            rect.id === activeTextLayerId ? textCssRectFromDraft(textDraft) : undefined;
+          const obstacleRect = draftRect ?? rect;
+          const obstacleRotation =
+            rect.id === activeTextLayerId
+              ? textDraft?.transform.rotation ?? rect.rotation
+              : rect.rotation;
+          return obstacleRotation === 0
+            ? obstacleRect
+            : rotatedBounds(obstacleRect, obstacleRotation);
+        }),
+        ...(previewSurface.textCssRect
+          ? [
+              previewSurface.textRotation === 0
+                ? previewSurface.textCssRect
+                : rotatedBounds(previewSurface.textCssRect, previewSurface.textRotation)
+            ]
+          : [])
+      ]
+    : [];
+  const stageHotspotActionsStyle =
+    previewSurface
+      ? stageActionsStyle({
+          contentRect: previewSurface.contentCssRect,
+          frameRect: previewSurface.frameCssRect,
+          canvasRect: previewSurface.canvasCssRect,
+          rotation: previewSurface.frameRotation,
+          avoidRects: textObstacleRects
+        })
+      : undefined;
   const wrapViewportRect = wrapRef.current?.getBoundingClientRect();
   const frameViewportRect =
     wrapViewportRect && visibleFrameCssRect
@@ -1264,7 +1810,24 @@ export function CardCanvas({
           height: visibleFrameCssRect.height
       }
       : undefined;
+  const textViewportRect =
+    wrapViewportRect && visibleTextCssRect
+      ? {
+          x: wrapViewportRect.left + visibleTextCssRect.x,
+          y: wrapViewportRect.top + visibleTextCssRect.y,
+          width: visibleTextCssRect.width,
+          height: visibleTextCssRect.height
+        }
+      : undefined;
   const canEditFrame = Boolean(previewSurface) && Boolean(onFrameTransformChange);
+  const canEditText =
+    Boolean(visibleTextCssRect) &&
+    (editingTextLayer
+      ? Boolean(onTextLayerChange)
+      : Boolean(onTextChange) &&
+        card.text.placement !== 'none' &&
+        Boolean(card.text.title?.trim() || card.text.subtitle?.trim()));
+  const canEditTextLayers = Boolean(previewSurface) && Boolean(onTextLayerChange);
 
   const clearDeferredSourceCommit = () => {
     if (sourceCommitTimerRef.current == null) return;
@@ -1362,6 +1925,105 @@ export function CardCanvas({
     onFrameTransformChange?.({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
   };
 
+  const setVisualTextDraft = (
+    draft: TextDraftState,
+    options: { snap?: boolean; includeEdges?: boolean } = {}
+  ) => {
+    if (!previewSurface || (!editingTextLayer && !onTextChange)) return;
+    const snapped = options.snap
+      ? snapRectToCanvas({
+          rect: draft.rect,
+          canvasRect: previewSurface.canvasCssRect,
+          includeEdges: options.includeEdges ?? true
+        })
+      : { rect: draft.rect, guides: [] };
+    const width = clamp(draft.width, TEXT_WIDTH_MIN, TEXT_WIDTH_MAX);
+    const scale = clamp(draft.scale, TEXT_SCALE_MIN, TEXT_SCALE_MAX);
+    const nextDraft: TextDraftState = {
+      rect: snapped.rect,
+      width,
+      scale,
+      transform: textTransformFromCssRect({
+        rect: snapped.rect,
+        canvasRect: previewSurface.canvasCssRect,
+        rotation: draft.transform.rotation
+      })
+    };
+
+    setTextSnapGuides(snapped.guides);
+    setTextDraft(nextDraft);
+    if (activeTextLayerId && onTextLayerChange) {
+      pendingTextLayerPatchRef.current = {
+        id: activeTextLayerId,
+        patch: {
+          transform: nextDraft.transform,
+          width,
+          scale
+        }
+      };
+      pendingTextPatchRef.current = null;
+    } else {
+      pendingTextPatchRef.current = {
+        placement: 'free',
+        transform: nextDraft.transform,
+        width,
+        scale
+      };
+      pendingTextLayerPatchRef.current = null;
+    }
+
+    if (textTransformFrameRef.current) return;
+    textTransformFrameRef.current = requestAnimationFrame(() => {
+      textTransformFrameRef.current = 0;
+      if (pendingTextLayerPatchRef.current) {
+        const pending = pendingTextLayerPatchRef.current;
+        onTextLayerChange?.(pending.id, pending.patch);
+        pendingTextLayerPatchRef.current = null;
+        return;
+      }
+      if (!pendingTextPatchRef.current) return;
+      onTextChange?.(pendingTextPatchRef.current);
+      pendingTextPatchRef.current = null;
+    });
+  };
+
+  const flushTextDraft = () => {
+    if (pendingTextLayerPatchRef.current) {
+      const pending = pendingTextLayerPatchRef.current;
+      onTextLayerChange?.(pending.id, pending.patch);
+      pendingTextLayerPatchRef.current = null;
+    }
+    if (pendingTextPatchRef.current) {
+      onTextChange?.(pendingTextPatchRef.current);
+      pendingTextPatchRef.current = null;
+    }
+    setTextDraft(null);
+    setTextSnapGuides([]);
+    setTextRotationSnapAngle(null);
+  };
+
+  const resetTextTransform = () => {
+    pendingTextPatchRef.current = null;
+    setTextDraft(null);
+    setTextSnapGuides([]);
+    setTextRotationSnapAngle(null);
+    pendingTextLayerPatchRef.current = null;
+    if (activeTextLayerId && onTextLayerChange) {
+      onTextLayerChange(activeTextLayerId, {
+        width: 0.32,
+        scale: 1,
+        transform: { x: 0.5, y: 0.5, rotation: 0 }
+      });
+      return;
+    }
+    onTextChange?.({
+      placement: 'free',
+      width: 0.68,
+      scale: 1,
+      transform: { x: 0.5, y: 0.5, rotation: 0 }
+    });
+  };
+
   const beginFrameDrag = (
     event: ReactPointerEvent<HTMLDivElement | HTMLButtonElement>,
     mode: FrameDragMode,
@@ -1380,6 +2042,50 @@ export function CardCanvas({
       startY: event.clientY,
       transform: visibleFrameTransform,
       startAngle: frameTransformAngle(event, frameViewportRect)
+    };
+  };
+
+  const beginTextDrag = (
+    event: ReactPointerEvent<HTMLDivElement | HTMLButtonElement>,
+    mode: TextDragMode,
+    handle?: TextResizeHandle
+  ) => {
+    if (!previewSurface || !visibleTextCssRect || !textViewportRect) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setTextDragging(true);
+    setTextRotationSnapAngle(null);
+    const transform = textTransformFromCssRect({
+      rect: visibleTextCssRect,
+      canvasRect: previewSurface.canvasCssRect,
+      rotation: visibleTextRotation
+    });
+    const width = clamp(
+      activeTextLayer?.width ?? card.text.width,
+      TEXT_WIDTH_MIN,
+      TEXT_WIDTH_MAX
+    );
+    const scale = clamp(
+      activeTextLayer?.scale ?? card.text.scale,
+      TEXT_SCALE_MIN,
+      TEXT_SCALE_MAX
+    );
+    setTextDraft({
+      rect: visibleTextCssRect,
+      transform,
+      width,
+      scale
+    });
+    textDragRef.current = {
+      pointerId: event.pointerId,
+      mode,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      rect: visibleTextCssRect,
+      transform,
+      width,
+      scale,
+      startAngle: textTransformAngle(event, textViewportRect)
     };
   };
 
@@ -1485,6 +2191,122 @@ export function CardCanvas({
     });
   };
 
+  const updateTextDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = textDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !previewSurface || !textViewportRect) {
+      return;
+    }
+
+    if (drag.mode === 'move') {
+      setVisualTextDraft({
+        ...drag,
+        rect: {
+          ...drag.rect,
+          x: drag.rect.x + event.clientX - drag.startX,
+          y: drag.rect.y + event.clientY - drag.startY
+        }
+      }, {
+        snap: !event.altKey,
+        includeEdges: true
+      });
+      return;
+    }
+
+    if (drag.mode === 'resize' && drag.handle) {
+      const direction = resizeHandleDirections(drag.handle);
+      const delta = localFrameDelta({
+        deltaX: event.clientX - drag.startX,
+        deltaY: event.clientY - drag.startY,
+        rotation: drag.transform.rotation
+      });
+      const centerX = drag.rect.x + drag.rect.width / 2;
+      const centerY = drag.rect.y + drag.rect.height / 2;
+
+      if (isCornerResizeHandle(drag.handle)) {
+        const handleVectorX = (direction.x * drag.rect.width) / 2;
+        const handleVectorY = (direction.y * drag.rect.height) / 2;
+        const diagonalLengthSquared =
+          handleVectorX * handleVectorX + handleVectorY * handleVectorY;
+        const multiplierDelta =
+          diagonalLengthSquared <= 0
+            ? 0
+            : (delta.x * handleVectorX + delta.y * handleVectorY) /
+              diagonalLengthSquared;
+        const minMultiplier = Math.max(
+          TEXT_WIDTH_MIN / drag.width,
+          TEXT_SCALE_MIN / drag.scale
+        );
+        const maxMultiplier = Math.min(
+          TEXT_WIDTH_MAX / drag.width,
+          TEXT_SCALE_MAX / drag.scale
+        );
+        const multiplier = clamp(1 + multiplierDelta, minMultiplier, maxMultiplier);
+        const nextWidth = drag.width * multiplier;
+        const nextScale = drag.scale * multiplier;
+        const nextCssWidth = drag.rect.width * multiplier;
+        const nextCssHeight = drag.rect.height * multiplier;
+
+        setVisualTextDraft({
+          rect: {
+            x: centerX - nextCssWidth / 2,
+            y: centerY - nextCssHeight / 2,
+            width: nextCssWidth,
+            height: nextCssHeight
+          },
+          transform: drag.transform,
+          width: nextWidth,
+          scale: nextScale
+        }, {
+          snap: !event.altKey,
+          includeEdges: false
+        });
+        return;
+      }
+
+      const nextCssWidth = Math.max(1, drag.rect.width + delta.x * direction.x * 2);
+      const nextWidth = clamp(
+        nextCssWidth / Math.max(1, previewSurface.canvasCssRect.width),
+        TEXT_WIDTH_MIN,
+        TEXT_WIDTH_MAX
+      );
+      const clampedCssWidth = nextWidth * previewSurface.canvasCssRect.width;
+
+      setVisualTextDraft({
+        rect: {
+          ...drag.rect,
+          x: centerX - clampedCssWidth / 2,
+          width: clampedCssWidth
+        },
+        transform: drag.transform,
+        width: nextWidth,
+        scale: drag.scale
+      }, {
+        snap: !event.altKey,
+        includeEdges: false
+      });
+      return;
+    }
+
+    const angle = textTransformAngle(event, textViewportRect);
+    const nextRotation = normalizeRotation(
+      drag.transform.rotation + ((angle - drag.startAngle) * 180) / Math.PI
+    );
+    const rotationSnap = event.altKey
+      ? { rotation: nextRotation, anchor: null }
+      : snapFrameRotation(nextRotation);
+    setTextSnapGuides([]);
+    setTextRotationSnapAngle(rotationSnap.anchor);
+    setVisualTextDraft({
+      rect: drag.rect,
+      width: drag.width,
+      scale: drag.scale,
+      transform: {
+        ...drag.transform,
+        rotation: rotationSnap.rotation
+      }
+    });
+  };
+
   const endFrameDrag = (event: ReactPointerEvent<HTMLElement>) => {
     if (frameDragRef.current?.pointerId !== event.pointerId) return;
     frameDragRef.current = null;
@@ -1492,16 +2314,72 @@ export function CardCanvas({
     flushFrameTransform();
   };
 
+  const endTextDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (textDragRef.current?.pointerId !== event.pointerId) return;
+    textDragRef.current = null;
+    setTextDragging(false);
+    flushTextDraft();
+  };
+
   const openFrameEditor = () => {
     flushSourceDraft();
+    flushTextDraft();
     setSourceEditorOpen(false);
+    setTextEditorOpen(false);
     setFrameEditorOpen(true);
   };
 
   const openSourceEditor = () => {
     flushFrameTransform();
+    flushTextDraft();
     setFrameEditorOpen(false);
+    setTextEditorOpen(false);
     setSourceEditorOpen(true);
+  };
+
+  const openTextEditor = () => {
+    if (!previewSurface || !visibleTextCssRect || (!editingTextLayer && !onTextChange)) return;
+    flushFrameTransform();
+    flushSourceDraft();
+    const transform = textTransformFromCssRect({
+      rect: visibleTextCssRect,
+      canvasRect: previewSurface.canvasCssRect,
+      rotation: visibleTextRotation
+    });
+    const width = clamp(
+      visibleTextCssRect.width / Math.max(1, previewSurface.canvasCssRect.width),
+      TEXT_WIDTH_MIN,
+      TEXT_WIDTH_MAX
+    );
+    setFrameEditorOpen(false);
+    setSourceEditorOpen(false);
+    setTextEditorOpen(true);
+    setTextDraft(null);
+    setTextSnapGuides([]);
+    setTextRotationSnapAngle(null);
+    onActiveTextLayerChange?.(activeTextLayerId);
+    if (!editingTextLayer && (card.text.placement !== 'free' || !card.text.transform)) {
+      onTextChange?.({
+        placement: 'free',
+        transform,
+        width
+      });
+    }
+  };
+
+  const openTextLayerEditor = (layerId: string) => {
+    if (layerId === activeTextLayerId) {
+      openTextEditor();
+      return;
+    }
+
+    flushFrameTransform();
+    flushSourceDraft();
+    flushTextDraft();
+    setFrameEditorOpen(false);
+    setSourceEditorOpen(false);
+    setTextEditorOpen(false);
+    onActiveTextLayerChange?.(layerId);
   };
 
   return (
@@ -1538,7 +2416,32 @@ export function CardCanvas({
             />
           ))
         : null}
-      {hasAssetSource && sourceEditorStyle && !frameEditorOpen && !sourceEditorOpen && (canEditFrame || canEditSource) ? (
+      {textEditorOpen && previewSurface
+        ? textSnapGuides.map((guide) => (
+            <div
+              key={`text-${guide.axis}-${Math.round(guide.position)}`}
+              className={
+                guide.axis === 'x'
+                  ? `${styles.frameSnapGuide} ${styles.frameSnapGuideVertical}`
+                  : `${styles.frameSnapGuide} ${styles.frameSnapGuideHorizontal}`
+              }
+              style={
+                guide.axis === 'x'
+                  ? {
+                      left: `${guide.position}px`,
+                      top: `${previewSurface.canvasCssRect.y}px`,
+                      height: `${previewSurface.canvasCssRect.height}px`
+                    }
+                  : {
+                      left: `${previewSurface.canvasCssRect.x}px`,
+                      top: `${guide.position}px`,
+                      width: `${previewSurface.canvasCssRect.width}px`
+                    }
+              }
+            />
+          ))
+        : null}
+      {hasAssetSource && sourceEditorStyle && !frameEditorOpen && !sourceEditorOpen && !textEditorOpen && (canEditFrame || canEditSource) ? (
         <div className={styles.stageHotspot} style={sourceEditorStyle}>
           <div
             className={styles.stageHotspotActions}
@@ -1566,6 +2469,27 @@ export function CardCanvas({
             ) : null}
           </div>
         </div>
+      ) : null}
+      {canEditTextLayers && !frameEditorOpen && !sourceEditorOpen && !textEditorOpen
+        ? previewSurface?.textLayerCssRects.map((rect) => (
+            <button
+              key={rect.id}
+              type="button"
+              className={`${styles.stageHotspot} ${styles.textHotspot}`}
+              style={textHotspotStyle({ rect, rotation: rect.rotation })}
+              onClick={() => openTextLayerEditor(rect.id)}
+              title="Edit text"
+            />
+          ))
+        : null}
+      {!canEditTextLayers && canEditText && textEditorStyle && !frameEditorOpen && !sourceEditorOpen && !textEditorOpen ? (
+        <button
+          type="button"
+          className={`${styles.stageHotspot} ${styles.textHotspot}`}
+          style={textEditorStyle}
+          onClick={openTextEditor}
+          title="Edit text"
+        />
       ) : null}
       {canEditFrame && frameEditorStyle && frameEditorOpen ? (
         <div
@@ -1631,6 +2555,95 @@ export function CardCanvas({
             onClick={() => {
               flushFrameTransform();
               setFrameEditorOpen(false);
+            }}
+          >
+            Done
+          </button>
+        </div>
+      ) : null}
+      {canEditText && textEditorStyle && textEditorOpen ? (
+        <div
+          className={
+            textDragging
+              ? `${styles.textEditor} ${styles.textEditorDragging}`
+              : styles.textEditor
+          }
+          style={textEditorStyle}
+          onPointerDown={(event) => beginTextDrag(event, 'move')}
+          onPointerMove={updateTextDrag}
+          onPointerUp={endTextDrag}
+          onPointerCancel={endTextDrag}
+        >
+          {activeTextLayer && onTextLayerChange ? (
+            <textarea
+              ref={textInputRef}
+              className={styles.textInlineInput}
+              style={textInlineInputStyle}
+              value={activeTextLayer.text}
+              rows={1}
+              spellCheck={false}
+              onChange={(event) =>
+                onTextLayerChange(activeTextLayer.id, {
+                  text: event.currentTarget.value
+                })
+              }
+            />
+          ) : null}
+          <button
+            type="button"
+            className={
+              textRotationSnapAngle !== null
+                ? `${styles.textRotateHandle} ${styles.textRotateHandleSnapped}`
+                : styles.textRotateHandle
+            }
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              beginTextDrag(event, 'rotate');
+            }}
+            title="Rotate text"
+          />
+          {textRotationSnapAngle !== null ? (
+            <div className={styles.textRotationBadge}>
+              {formatRotationAngle(textRotationSnapAngle)}
+            </div>
+          ) : null}
+          {(['e', 'w', 'nw', 'ne', 'sw', 'se'] as const).map((handle) => (
+            <button
+              key={handle}
+              type="button"
+              className={`${styles.textScaleHandle} ${styles[`textScaleHandle${handle.toUpperCase()}`]}`}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                beginTextDrag(event, 'resize', handle);
+              }}
+              title={
+                handle === 'e' || handle === 'w'
+                  ? 'Resize text width'
+                  : 'Resize text scale'
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+      {canEditText && textEditorToolbarStyle && textEditorOpen ? (
+        <div
+          className={styles.textEditorToolbar}
+          style={textEditorToolbarStyle}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className={styles.textToolButton}
+            onClick={resetTextTransform}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            className={`${styles.textToolButton} ${styles.textDoneButton}`}
+            onClick={() => {
+              flushTextDraft();
+              setTextEditorOpen(false);
             }}
           >
             Done

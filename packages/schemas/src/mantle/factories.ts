@@ -41,7 +41,10 @@ function cloneMantleFrame(frame: MantleFrame): MantleFrame {
 }
 
 function cloneMantleText(text: MantleText): MantleText {
-  return { ...text };
+  return {
+    ...text,
+    transform: text.transform ? { ...text.transform } : undefined
+  };
 }
 
 function cloneMantleExportSettings(

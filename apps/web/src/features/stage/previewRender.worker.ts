@@ -67,7 +67,8 @@ scope.onmessage = async (event) => {
       canvas,
       renderMode: 'preview',
       scale: request.scale,
-      showEmptyPlaceholderText: request.showEmptyPlaceholderText
+      showEmptyPlaceholderText: request.showEmptyPlaceholderText,
+      hiddenTextLayerIds: request.hiddenTextLayerIds
     });
   } catch (error) {
     postFailure(
@@ -99,7 +100,10 @@ scope.onmessage = async (event) => {
         contentRect,
         frameRect,
         baseFrameRect,
-        frameRotation: rendered?.frameRotation ?? 0
+        frameRotation: rendered?.frameRotation ?? 0,
+        textRect: rendered?.textRect,
+        textRotation: rendered?.textRotation ?? 0,
+        textLayerRects: rendered?.textLayerRects
       },
       [bitmap]
     );

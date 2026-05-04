@@ -3,7 +3,7 @@ import * as z from 'zod';
 import { MantleBackgroundSchema } from './background';
 import { MantleExportSettingsSchema } from './export';
 import { MantleFrameSchema } from './frame';
-import { MantleTextSchema } from './text';
+import { MantleTextLayerSchema, MantleTextSchema } from './text';
 import { MANTLE_SOURCE_PLACEMENT_MODES } from './model';
 export {
   MANTLE_SOURCE_PLACEMENT_MODES
@@ -86,5 +86,7 @@ export const MantleCardSchema = z.object({
   frameTransform: MantleFrameTransformSchema.optional(),
   frame: MantleFrameSchema,
   text: MantleTextSchema,
+  textLayers: z.array(MantleTextLayerSchema).max(24).optional(),
+  activeTextLayerId: z.string().min(1).optional(),
   export: MantleExportSettingsSchema
 }).strict();

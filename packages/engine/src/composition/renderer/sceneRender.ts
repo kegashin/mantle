@@ -172,18 +172,46 @@ export async function drawMantleFrameSurface({
 
 export function drawMantleText({
   ctx,
-  layout
+  layout,
+  hiddenTextLayerIds = []
 }: {
   ctx: MantleCanvasRenderingContext2D;
   layout: MantleSceneLayout;
+  hiddenTextLayerIds?: string[] | undefined;
 }): void {
-  if (!layout.textDraw) return;
+  const hiddenLayerIds = new Set(hiddenTextLayerIds);
+  const drawText = (textDraw: NonNullable<MantleSceneLayout['textDraw']>) => {
+    const draw = () =>
+    drawTextBlock({
+      ctx,
+      layout: textDraw.layout,
+      x: textDraw.x,
+      y: textDraw.y,
+      align: textDraw.align
+    });
 
-  drawTextBlock({
-    ctx,
-    layout: layout.textDraw.layout,
-    x: layout.textDraw.x,
-    y: layout.textDraw.y,
-    align: layout.textDraw.align
+    if (textDraw.rotation === 0) {
+      draw();
+      return;
+    }
+
+    const centerX = textDraw.x + textDraw.layout.width / 2;
+    const centerY = textDraw.y + textDraw.layout.height / 2;
+
+    ctx.save();
+    try {
+      ctx.translate(centerX, centerY);
+      ctx.rotate((textDraw.rotation * Math.PI) / 180);
+      ctx.translate(-centerX, -centerY);
+      draw();
+    } finally {
+      ctx.restore();
+    }
+  };
+
+  if (layout.textDraw) drawText(layout.textDraw);
+  layout.textLayerDraws.forEach((textDraw) => {
+    if (hiddenLayerIds.has(textDraw.layerId)) return;
+    drawText(textDraw);
   });
 }

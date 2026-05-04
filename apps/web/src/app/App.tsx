@@ -9,7 +9,8 @@ import {
   type MantleFramePreset,
   type MantleRuntimeProject as RuntimeMantleProject,
   type MantleSurfaceAspectRatioPreset,
-  type MantleSurfaceTarget
+  type MantleSurfaceTarget,
+  type MantleTextLayer
 } from '@mantle/schemas/model';
 import {
   DEFAULT_MANTLE_TARGETS,
@@ -1360,6 +1361,53 @@ export function App() {
     });
   };
 
+  const createTextLayerId = () =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `text-${Date.now().toString(36)}`;
+
+  const addActiveTextLayer = () => {
+    const id = createTextLayerId();
+    const layers = activeCard.textLayers ?? [];
+    updateActiveCard({
+      textLayers: [
+        ...layers,
+        {
+          id,
+          text: 'Text',
+          font: activeCard.text.titleFont,
+          align: 'center',
+          color: activeCard.text.titleColor,
+          scale: 1,
+          width: 0.28,
+          shadow: 'auto',
+          transform: { x: 0.5, y: 0.5, rotation: 0 }
+        }
+      ],
+      activeTextLayerId: id
+    });
+  };
+
+  const updateActiveTextLayer = (
+    layerId: string,
+    patch: Partial<MantleTextLayer>
+  ) => {
+    updateActiveCard({
+      textLayers: (activeCard.textLayers ?? []).map((layer) =>
+        layer.id === layerId ? { ...layer, ...patch } : layer
+      ),
+      activeTextLayerId: layerId
+    });
+  };
+
+  const removeActiveTextLayer = (layerId: string) => {
+    const layers = (activeCard.textLayers ?? []).filter((layer) => layer.id !== layerId);
+    updateActiveCard({
+      textLayers: layers.length > 0 ? layers : undefined,
+      activeTextLayerId: layers[0]?.id
+    });
+  };
+
   const updateActiveExport = (patch: Partial<MantleCard['export']>) => {
     updateActiveCard({
       export: { ...activeCard.export, ...patch }
@@ -1950,6 +1998,11 @@ export function App() {
             onFrameTransformChange={(frameTransform) =>
               updateActiveCard({ frameTransform })
             }
+            onTextChange={updateActiveText}
+            onTextLayerChange={updateActiveTextLayer}
+            onActiveTextLayerChange={(activeTextLayerId) =>
+              updateActiveCard({ activeTextLayerId })
+            }
           />
         </section>
 
@@ -2020,6 +2073,12 @@ export function App() {
           onRadiusChange={(cornerRadius) => updateActiveFrame({ cornerRadius })}
           onFrameShadowChange={updateActiveFrame}
           onTextChange={updateActiveText}
+          onTextLayerAdd={addActiveTextLayer}
+          onTextLayerChange={updateActiveTextLayer}
+          onTextLayerRemove={removeActiveTextLayer}
+          onActiveTextLayerChange={(activeTextLayerId) =>
+            updateActiveCard({ activeTextLayerId })
+          }
         />
       </main>
 

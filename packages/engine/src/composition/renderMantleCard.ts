@@ -55,6 +55,7 @@ export type MantleRenderInput = {
   asset?: MantleRenderableAsset | undefined;
   backgroundAsset?: MantleRenderableAsset | undefined;
   showEmptyPlaceholderText?: boolean | undefined;
+  hiddenTextLayerIds?: string[] | undefined;
   renderMode?: MantleRenderMode | undefined;
   /**
    * Output scale factor. For preview use 0.4..1, for export 1..5.
@@ -186,7 +187,11 @@ export async function renderMantleCardToCanvas(
       layout,
       showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
     });
-    drawMantleText({ ctx, layout });
+    drawMantleText({
+      ctx,
+      layout,
+      hiddenTextLayerIds: input.hiddenTextLayerIds
+    });
 
     renderCompleted = true;
     return canvas;

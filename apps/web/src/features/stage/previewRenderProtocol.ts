@@ -11,6 +11,7 @@ export type PreviewRenderRequestPayload = {
   backgroundAsset?: MantleRenderableAsset | undefined;
   scale: number;
   showEmptyPlaceholderText: boolean;
+  hiddenTextLayerIds?: string[] | undefined;
 };
 
 export type PreviewRenderRequest = PreviewRenderRequestPayload & {
@@ -40,6 +41,21 @@ export type PreviewRenderResult = {
     height: number;
   };
   frameRotation: number;
+  textRect?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | undefined;
+  textRotation: number;
+  textLayerRects?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+  }> | undefined;
 };
 
 export type PreviewRenderFailurePhase = 'render' | 'transfer';

@@ -2,7 +2,8 @@ import type {
   MantleCard,
   MantlePalette,
   MantleRenderableAsset,
-  MantleText
+  MantleText,
+  MantleTextLayer
 } from '@mantle/schemas/model';
 
 import type { MantleCanvasRenderingContext2D } from '../canvas';
@@ -14,7 +15,9 @@ import {
 import { fitFrameRectToAsset } from './layout';
 import {
   createTextBlockLayout,
+  createTextLayerBlockLayout,
   hasVisibleText,
+  hasVisibleTextLayer,
   resolveCardText,
   type TextBlockLayout
 } from './text';
@@ -26,6 +29,11 @@ export type MantleTextDraw = {
   x: number;
   y: number;
   align: MantleText['align'];
+  rotation: number;
+};
+
+export type MantleTextLayerDraw = MantleTextDraw & {
+  layerId: string;
 };
 
 export type MantleSceneLayout = {
@@ -37,12 +45,38 @@ export type MantleSceneLayout = {
   text: MantleText;
   showText: boolean;
   textDraw?: MantleTextDraw | undefined;
+  textLayerDraws: MantleTextLayerDraw[];
   palette: MantlePalette;
   cornerRadius: number;
   contentPadding: number;
   drawScale: number;
   frameRotation: number;
 };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeTextRotation(rotation: number | undefined): number {
+  const normalized = (((((rotation ?? 0) + 180) % 360) + 360) % 360) - 180;
+  return Object.is(normalized, -0) ? 0 : normalized;
+}
+
+function resolveTextTransform(text: MantleText): NonNullable<MantleText['transform']> {
+  return {
+    x: clamp(text.transform?.x ?? 0.5, -1, 2),
+    y: clamp(text.transform?.y ?? 0.5, -1, 2),
+    rotation: normalizeTextRotation(text.transform?.rotation)
+  };
+}
+
+function resolveLayerTextTransform(layer: MantleTextLayer): MantleTextLayer['transform'] {
+  return {
+    x: clamp(layer.transform.x, -1, 2),
+    y: clamp(layer.transform.y, -1, 2),
+    rotation: normalizeTextRotation(layer.transform.rotation)
+  };
+}
 
 export function resolveMantleSceneLayout({
   ctx,
@@ -64,7 +98,10 @@ export function resolveMantleSceneLayout({
   const drawScale = width / NOMINAL_WIDTH;
   const padding = Math.min(card.frame.padding * scale, width * 0.16, height * 0.22);
   const text = resolveCardText(card);
-  const showText = hasVisibleText(text);
+  const visibleTextLayers = (card.textLayers ?? []).filter(
+    (layer) => hasVisibleTextLayer(layer) || layer.id === card.activeTextLayerId
+  );
+  const showText = visibleTextLayers.length === 0 && hasVisibleText(text);
   const availableRect: Rect = {
     x: padding,
     y: padding,
@@ -76,9 +113,28 @@ export function resolveMantleSceneLayout({
   const edgeInset = showText ? Math.min(width, height) * 0.03 : 0;
   let imageBounds: Rect = { ...availableRect };
   let textDraw: MantleTextDraw | undefined;
+  const textLayerDraws: MantleTextLayerDraw[] = [];
 
   if (showText) {
-    if (text.placement === 'top' || text.placement === 'bottom') {
+    if (text.placement === 'free') {
+      const textWidth = Math.min(width, Math.max(1, width * text.width));
+      const layout = createTextBlockLayout({
+        ctx,
+        text,
+        palette,
+        maxWidth: textWidth,
+        reference: textReference,
+        backgroundPresetId: card.background.presetId
+      });
+      const transform = resolveTextTransform(text);
+      textDraw = {
+        layout,
+        x: transform.x * width - layout.width / 2,
+        y: transform.y * height - layout.height / 2,
+        align: text.align,
+        rotation: transform.rotation
+      };
+    } else if (text.placement === 'top' || text.placement === 'bottom') {
       const textWidth = Math.min(
         availableRect.width,
         Math.max(1, availableRect.width * text.width)
@@ -102,7 +158,7 @@ export function resolveMantleSceneLayout({
           ? availableRect.y + edgeInset
           : availableRect.y + availableRect.height - layout.height - edgeInset;
 
-      textDraw = { layout, x: textX, y: textY, align: text.align };
+      textDraw = { layout, x: textX, y: textY, align: text.align, rotation: 0 };
       imageBounds =
         text.placement === 'top'
           ? {
@@ -139,7 +195,7 @@ export function resolveMantleSceneLayout({
           : availableRect.x + availableRect.width - layout.width - edgeInset;
       const textY = availableRect.y + (availableRect.height - layout.height) / 2;
 
-      textDraw = { layout, x: textX, y: textY, align: text.align };
+      textDraw = { layout, x: textX, y: textY, align: text.align, rotation: 0 };
       imageBounds =
         text.placement === 'left'
           ? {
@@ -158,6 +214,29 @@ export function resolveMantleSceneLayout({
               height: availableRect.height
             };
     }
+  }
+
+  if (visibleTextLayers.length > 0) {
+    visibleTextLayers.forEach((layer) => {
+      const textWidth = Math.min(width, Math.max(1, width * layer.width));
+      const layout = createTextLayerBlockLayout({
+        ctx,
+        layer,
+        palette,
+        maxWidth: textWidth,
+        reference: textReference,
+        backgroundPresetId: card.background.presetId
+      });
+      const transform = resolveLayerTextTransform(layer);
+      textLayerDraws.push({
+        layerId: layer.id,
+        layout,
+        x: transform.x * width - layout.width / 2,
+        y: transform.y * height - layout.height / 2,
+        align: layer.align,
+        rotation: transform.rotation
+      });
+    });
   }
 
   const cornerRadius = card.frame.cornerRadius * scale;
@@ -185,6 +264,7 @@ export function resolveMantleSceneLayout({
     text,
     showText,
     textDraw,
+    textLayerDraws,
     palette,
     cornerRadius,
     contentPadding,

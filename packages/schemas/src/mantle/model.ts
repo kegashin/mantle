@@ -279,6 +279,7 @@ export type MantleSurfaceTarget = {
 
 export const MANTLE_TEXT_PLACEMENTS = [
   'none',
+  'free',
   'top',
   'bottom',
   'left',
@@ -306,6 +307,12 @@ export type MantleTextAlignment = (typeof MANTLE_TEXT_ALIGNMENTS)[number];
 export const MANTLE_TEXT_SHADOWS = ['auto', 'on', 'off'] as const;
 export type MantleTextShadow = (typeof MANTLE_TEXT_SHADOWS)[number];
 
+export type MantleTextTransform = {
+  x: number;
+  y: number;
+  rotation: number;
+};
+
 export type MantleText = {
   placement: MantleTextPlacement;
   align: MantleTextAlignment;
@@ -319,6 +326,19 @@ export type MantleText = {
   width: number;
   gap: number;
   shadow: MantleTextShadow;
+  transform?: MantleTextTransform | undefined;
+};
+
+export type MantleTextLayer = {
+  id: string;
+  text: string;
+  font: MantleTextFont;
+  align: MantleTextAlignment;
+  color?: MantleHexColor | undefined;
+  scale: number;
+  width: number;
+  shadow: MantleTextShadow;
+  transform: MantleTextTransform;
 };
 
 export type MantleTheme = {
@@ -341,6 +361,8 @@ export type MantleCard = {
   frameTransform?: MantleFrameTransform | undefined;
   frame: MantleFrame;
   text: MantleText;
+  textLayers?: MantleTextLayer[] | undefined;
+  activeTextLayerId?: string | undefined;
   export: MantleExportSettings;
 };
 

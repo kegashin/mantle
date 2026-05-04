@@ -14,10 +14,10 @@ import type {
   MantleRenderableAsset,
   MantlePalette,
   MantleTextFont,
-  MantleTextPlacement,
   MantleTextShadow,
   MantleSurfaceAspectRatioPreset,
-  MantleSurfaceTarget
+  MantleSurfaceTarget,
+  MantleTextLayer
 } from '@mantle/schemas/model';
 import {
   useEffect,
@@ -88,6 +88,10 @@ type InspectorPanelProps = {
     >
   ) => void;
   onTextChange: (patch: Partial<MantleCard['text']>) => void;
+  onTextLayerAdd: () => void;
+  onTextLayerChange: (layerId: string, patch: Partial<MantleTextLayer>) => void;
+  onTextLayerRemove: (layerId: string) => void;
+  onActiveTextLayerChange: (layerId: string | undefined) => void;
 };
 
 type SliderFillStyle = CSSProperties & Record<'--slider-fill', string>;
@@ -128,20 +132,6 @@ const FRAME_SHELL_GROUPS: FrameShellGroup[] = [
   }
 ];
 
-const ALIGN_OPTIONS: Array<{ value: 'left' | 'center' | 'right'; label: string }> = [
-  { value: 'left', label: 'Left' },
-  { value: 'center', label: 'Center' },
-  { value: 'right', label: 'Right' }
-];
-
-const TEXT_PLACEMENT_OPTIONS: Array<{ value: MantleTextPlacement; label: string }> = [
-  { value: 'none', label: 'None' },
-  { value: 'top', label: 'Top' },
-  { value: 'bottom', label: 'Bottom' },
-  { value: 'left', label: 'Left' },
-  { value: 'right', label: 'Right' }
-];
-
 const TEXT_SHADOW_OPTIONS: Array<{ value: MantleTextShadow; label: string; title?: string }> = [
   { value: 'auto', label: 'Auto', title: 'Auto adds shadow when the text needs contrast.' },
   { value: 'on', label: 'On' },
@@ -161,15 +151,56 @@ const TEXT_FONT_OPTIONS: Array<{ value: MantleTextFont; label: string }> = [
   { value: 'condensed', label: 'Condensed' }
 ];
 
-function isMantleTextFont(value: string): value is MantleTextFont {
-  return TEXT_FONT_OPTIONS.some((option) => option.value === value);
-}
+const SHOW_MAGIC_TEXT_LAYOUT = false;
 
-function resolveTextFontValue(
-  value: string,
-  fallback: MantleTextFont
-): MantleTextFont {
-  return isMantleTextFont(value) ? value : fallback;
+function resolveMagicTextLayout(
+  card: MantleCard,
+  target: MantleSurfaceTarget | undefined
+): Partial<MantleCard['text']> {
+  const ratio = target ? target.width / target.height : 16 / 9;
+  const wide = ratio >= 1.42;
+  const portrait = ratio <= 0.82;
+  const squareish = ratio > 0.82 && ratio < 1.22;
+
+  if (wide) {
+    return {
+      placement: 'left',
+      align: 'left',
+      titleFont: card.text.titleFont === 'sans' ? 'display' : card.text.titleFont,
+      subtitle: undefined,
+      width: 0.3,
+      gap: 72,
+      scale: 1.04,
+      shadow: 'auto',
+      transform: undefined
+    };
+  }
+
+  if (portrait) {
+    return {
+      placement: 'top',
+      align: 'center',
+      titleFont: card.text.titleFont === 'sans' ? 'display' : card.text.titleFont,
+      subtitle: undefined,
+      width: 0.82,
+      gap: 56,
+      scale: 0.92,
+      shadow: 'auto',
+      transform: undefined
+    };
+  }
+
+  return {
+    placement: squareish ? 'bottom' : 'top',
+    align: 'center',
+    titleFont: card.text.titleFont === 'sans' ? 'display' : card.text.titleFont,
+    subtitle: undefined,
+    width: squareish ? 0.76 : 0.72,
+    gap: squareish ? 52 : 60,
+    scale: squareish ? 0.9 : 0.96,
+    shadow: 'auto',
+    transform: undefined
+  };
 }
 
 const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
@@ -367,6 +398,32 @@ function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+function FontSelect({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: MantleTextFont;
+  onChange: (font: MantleTextFont) => void;
+}) {
+  return (
+    <label className={styles.selectField}>
+      <span>{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value as MantleTextFont)}
+      >
+        {TEXT_FONT_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -597,7 +654,11 @@ export function InspectorPanel({
   onFrameContentPaddingChange,
   onRadiusChange,
   onFrameShadowChange,
-  onTextChange
+  onTextChange,
+  onTextLayerAdd,
+  onTextLayerChange,
+  onTextLayerRemove,
+  onActiveTextLayerChange
 }: InspectorPanelProps) {
   const [draggedColorIndex, setDraggedColorIndex] = useState<number | null>(null);
   const [dropColorIndex, setDropColorIndex] = useState<number | null>(null);
@@ -720,18 +781,12 @@ export function InspectorPanel({
       : paletteFieldCount === 2
         ? `${styles.paletteRow} ${styles.paletteRowCompact}`
         : `${styles.paletteRow} ${styles.paletteRowSingle}`;
-  const isSideText = card.text.placement === 'left' || card.text.placement === 'right';
-  const textWidthMin = isSideText ? 0.08 : 0.2;
-  const textWidthMax = isSideText ? 0.52 : 1;
-  const updateTextPlacement = (placement: MantleTextPlacement) => {
-    const sidePlacement = placement === 'left' || placement === 'right';
-    onTextChange({
-      placement,
-      width: sidePlacement
-        ? Math.min(card.text.width, 0.32)
-        : Math.max(card.text.width, 0.68)
-    });
-  };
+  const textLayers = card.textLayers ?? [];
+  const activeTextLayer =
+    textLayers.find((layer) => layer.id === card.activeTextLayerId) ?? textLayers[0];
+  const activateTextLayer = () => onTextLayerAdd();
+  const applyMagicTextLayout = () =>
+    onTextChange(resolveMagicTextLayout(card, activeTarget));
 
   return (
     <aside className={styles.inspector}>
@@ -1177,133 +1232,109 @@ export function InspectorPanel({
       </Section>
 
       <Section icon="type" title="Text">
-        <Segmented
-          value={card.text.placement}
-          options={TEXT_PLACEMENT_OPTIONS}
-          onChange={updateTextPlacement}
-        />
-        {card.text.placement !== 'none' ? (
-          <>
-            <label className={styles.textField}>
-              <span>Title</span>
-              <textarea
-                rows={2}
-                value={card.text.title ?? ''}
-                placeholder="Optional title"
-                onChange={(event) =>
-                  onTextChange({ title: event.currentTarget.value || undefined })
-                }
-              />
-            </label>
-            <label className={styles.textField}>
-              <span>Subtitle</span>
-              <textarea
-                rows={2}
-                value={card.text.subtitle ?? ''}
-                placeholder="Optional supporting line"
-                onChange={(event) =>
-                  onTextChange({ subtitle: event.currentTarget.value || undefined })
-                }
-              />
-            </label>
-            <Segmented
-              value={card.text.align}
-              options={ALIGN_OPTIONS}
-              onChange={(align) => onTextChange({ align })}
-            />
-            <div className={styles.textStyleRow}>
-              <label className={styles.selectField}>
-                <span>Title font</span>
-                <select
-                  value={card.text.titleFont}
-                  onChange={(event) =>
-                    onTextChange({
-                      titleFont: resolveTextFontValue(
-                        event.currentTarget.value,
-                        card.text.titleFont
-                      )
-                    })
-                  }
+        <div className={styles.textLayersPanel}>
+          <div className={styles.textLayersHeader}>
+            <div className={styles.textLayersTitle}>
+              <span>Layers</span>
+              <strong>{textLayers.length}</strong>
+            </div>
+            <div className={styles.textLayerActions}>
+              {SHOW_MAGIC_TEXT_LAYOUT ? (
+                <button
+                  type="button"
+                  className={styles.actionButton}
+                  onClick={applyMagicTextLayout}
+                  title="Place text automatically"
                 >
-                  {TEXT_FONT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <ColorSwatch
-                label="Title color"
-                value={card.text.titleColor ?? palette.foreground}
-                onChange={(titleColor) => onTextChange({ titleColor })}
-                onReset={() => onTextChange({ titleColor: undefined })}
-                resetDisabled={!card.text.titleColor}
+                  <Icon name="wand" size={13} aria-hidden="true" />
+                  <span>Magic</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`${styles.actionButton} ${styles.textAddButton}`}
+                onClick={activateTextLayer}
+              >
+                <Icon name="type" size={12} aria-hidden="true" />
+                <span>Add</span>
+              </button>
+            </div>
+          </div>
+          {textLayers.length > 0 ? (
+            <div className={styles.textLayerList}>
+              {textLayers.map((layer, index) => {
+                const layerLabel = layer.text.trim() || `Text ${index + 1}`;
+                return (
+                  <div
+                    key={layer.id}
+                    className={
+                      layer.id === activeTextLayer?.id
+                        ? `${styles.textLayerItem} ${styles.textLayerItemActive}`
+                        : styles.textLayerItem
+                    }
+                  >
+                    <input
+                      className={styles.textLayerInput}
+                      aria-label={`Text layer ${index + 1}`}
+                      value={layer.text}
+                      placeholder={layerLabel}
+                      onFocus={() => onActiveTextLayerChange(layer.id)}
+                      onChange={(event) =>
+                        onTextLayerChange(layer.id, {
+                          text: event.currentTarget.value
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className={styles.textLayerDelete}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onTextLayerRemove(layer.id);
+                      }}
+                      title="Remove text layer"
+                      aria-label={`Remove ${layerLabel}`}
+                    >
+                      <Icon name="close" size={12} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={styles.textEmptyState}>
+              Add text, then edit it directly on the canvas.
+            </div>
+          )}
+        </div>
+        {activeTextLayer ? (
+          <div className={styles.textLayerControls}>
+            <div className={styles.textControlGroup}>
+              <div className={styles.textControlGroupTitle}>Style</div>
+              <div className={styles.textStylePanel}>
+                <FontSelect
+                  label="Font"
+                  value={activeTextLayer.font}
+                  onChange={(font) => onTextLayerChange(activeTextLayer.id, { font })}
+                />
+                <ColorSwatch
+                  label="Color"
+                  value={activeTextLayer.color ?? palette.foreground}
+                  onChange={(color) => onTextLayerChange(activeTextLayer.id, { color })}
+                  onReset={() => onTextLayerChange(activeTextLayer.id, { color: undefined })}
+                  resetDisabled={!activeTextLayer.color}
+                />
+              </div>
+            </div>
+            <div className={styles.textControlGroup}>
+              <div className={styles.textControlGroupTitle}>Shadow</div>
+              <Segmented
+                value={activeTextLayer.shadow}
+                options={TEXT_SHADOW_OPTIONS}
+                onChange={(shadow) => onTextLayerChange(activeTextLayer.id, { shadow })}
               />
             </div>
-            <div className={styles.textStyleRow}>
-              <label className={styles.selectField}>
-                <span>Subtitle font</span>
-                <select
-                  value={card.text.subtitleFont}
-                  onChange={(event) =>
-                    onTextChange({
-                      subtitleFont: resolveTextFontValue(
-                        event.currentTarget.value,
-                        card.text.subtitleFont
-                      )
-                    })
-                  }
-                >
-                  {TEXT_FONT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <ColorSwatch
-                label="Subtitle color"
-                value={card.text.subtitleColor ?? palette.muted ?? palette.foreground}
-                onChange={(subtitleColor) => onTextChange({ subtitleColor })}
-                onReset={() => onTextChange({ subtitleColor: undefined })}
-                resetDisabled={!card.text.subtitleColor}
-              />
-            </div>
-            <Slider
-              label="Text scale"
-              min={0.6}
-              max={1.8}
-              step={0.02}
-              value={card.text.scale}
-              format={formatPreciseMultiplier}
-              onChange={(scale) => onTextChange({ scale })}
-            />
-            <Slider
-              label={isSideText ? 'Column width' : 'Line width'}
-              min={textWidthMin}
-              max={textWidthMax}
-              step={0.02}
-              value={Math.max(textWidthMin, Math.min(card.text.width, textWidthMax))}
-              format={formatPercent}
-              editScale={100}
-              onChange={(width) => onTextChange({ width })}
-            />
-            <Slider
-              label="Gap"
-              min={0}
-              max={180}
-              step={4}
-              value={card.text.gap}
-              format={formatPx}
-              onChange={(gap) => onTextChange({ gap })}
-            />
-            <div className={styles.frameGroupLabel}>Shadow</div>
-            <Segmented
-              value={card.text.shadow}
-              options={TEXT_SHADOW_OPTIONS}
-              onChange={(shadow) => onTextChange({ shadow })}
-            />
-          </>
+          </div>
         ) : null}
       </Section>
 

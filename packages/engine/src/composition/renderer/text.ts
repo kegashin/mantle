@@ -3,7 +3,8 @@ import type {
   MantleCard,
   MantlePalette,
   MantleText,
-  MantleTextFont
+  MantleTextFont,
+  MantleTextLayer
 } from '@mantle/schemas/model';
 
 import type { MantleCanvasRenderingContext2D } from '../canvas';
@@ -154,6 +155,10 @@ export function resolveCardText(card: MantleCard): MantleText {
 
 export function hasVisibleText(text: MantleText): boolean {
   return text.placement !== 'none' && Boolean(text.title?.trim() || text.subtitle?.trim());
+}
+
+export function hasVisibleTextLayer(layer: MantleTextLayer): boolean {
+  return Boolean(layer.text.trim());
 }
 
 function resolveTextFontStack(font: MantleTextFont): string {
@@ -318,6 +323,52 @@ export function createTextBlockLayout({
       (sum, item) => sum + (item.type === 'line' ? item.lineHeight : item.height),
       0
     )
+  };
+}
+
+export function createTextLayerBlockLayout({
+  ctx,
+  layer,
+  palette,
+  maxWidth,
+  reference,
+  backgroundPresetId
+}: {
+  ctx: MantleCanvasRenderingContext2D;
+  layer: MantleTextLayer;
+  palette: MantlePalette;
+  maxWidth: number;
+  reference: number;
+  backgroundPresetId: MantleBackgroundPresetId;
+}): TextBlockLayout {
+  const layout = createTextBlockLayout({
+    ctx,
+    text: {
+      placement: 'free',
+      align: layer.align,
+      titleFont: layer.font,
+      subtitleFont: layer.font,
+      titleColor: layer.color,
+      title: layer.text,
+      scale: layer.scale,
+      width: layer.width,
+      gap: 0,
+      shadow: layer.shadow,
+      transform: layer.transform
+    },
+    palette,
+    maxWidth,
+    reference,
+    backgroundPresetId
+  });
+
+  if (layout.items.length > 0) return layout;
+
+  const placeholderSize = Math.max(32, Math.round(reference * 0.04 * layer.scale));
+  return {
+    items: [],
+    width: maxWidth,
+    height: placeholderSize * 1.06
   };
 }
 

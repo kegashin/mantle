@@ -1,4 +1,9 @@
-import type { MantleFrame, MantleRenderableAsset, MantleText } from '@mantle/schemas/model';
+import type {
+  MantleFrame,
+  MantleRenderableAsset,
+  MantleText,
+  MantleTextLayer
+} from '@mantle/schemas/model';
 
 import {
   createCanvas,
@@ -50,6 +55,9 @@ export type MantlePreviewRenderResult = {
   frameRect: Rect;
   baseFrameRect: Rect;
   frameRotation: number;
+  textRect?: Rect | undefined;
+  textRotation: number;
+  textLayerRects: Array<Rect & { id: string; rotation: number }>;
 };
 
 function ensureCanvas(input: MantleRenderInput, width: number, height: number): MantleCanvas {
@@ -116,6 +124,28 @@ function assetLayoutKey(asset: MantleRenderableAsset | undefined) {
   };
 }
 
+function textRectFromLayout(layout: MantleSceneLayout): Rect | undefined {
+  const textDraw = layout.textDraw;
+  if (!textDraw) return undefined;
+  return {
+    x: textDraw.x,
+    y: textDraw.y,
+    width: textDraw.layout.width,
+    height: textDraw.layout.height
+  };
+}
+
+function textLayerRectsFromLayout(layout: MantleSceneLayout) {
+  return layout.textLayerDraws.map((textDraw) => ({
+    id: textDraw.layerId,
+    x: textDraw.x,
+    y: textDraw.y,
+    width: textDraw.layout.width,
+    height: textDraw.layout.height,
+    rotation: textDraw.rotation
+  }));
+}
+
 function textGeometryKey(text: MantleText) {
   if (text.placement === 'none') {
     return {
@@ -131,7 +161,19 @@ function textGeometryKey(text: MantleText) {
     subtitleFont: text.subtitleFont,
     scale: text.scale,
     width: text.width,
-    gap: text.gap
+    gap: text.gap,
+    transform: text.transform ?? null
+  };
+}
+
+function textLayerGeometryKey(layer: MantleTextLayer) {
+  return {
+    id: layer.id,
+    text: layer.text.trim(),
+    font: layer.font,
+    scale: layer.scale,
+    width: layer.width,
+    transform: layer.transform
   };
 }
 
@@ -174,7 +216,8 @@ function createLayoutGeometryKey(
     asset: assetLayoutKey(input.asset),
     frame: frameLayoutKey(input.card.frame),
     frameTransform: input.card.frameTransform ?? null,
-    text: textGeometryKey(input.card.text)
+    text: textGeometryKey(input.card.text),
+    textLayers: input.card.textLayers?.map(textLayerGeometryKey) ?? []
   });
 }
 
@@ -190,6 +233,8 @@ function createTextDrawKey(
     height,
     layoutGeometryKey,
     text: input.card.text,
+    textLayers: input.card.textLayers ?? [],
+    hiddenTextLayerIds: input.hiddenTextLayerIds ?? [],
     palette: input.card.background.palette,
     backgroundPresetId: input.card.background.presetId
   });
@@ -384,6 +429,9 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         cachedFrameSurface?.baseFrameRect ?? cachedLayout.layout.baseImageRect;
       const frameRotation =
         cachedFrameSurface?.frameRotation ?? cachedLayout.layout.frameRotation;
+      const textRect = textRectFromLayout(cachedLayout.layout);
+      const textRotation = cachedLayout.layout.textDraw?.rotation ?? 0;
+      const textLayerRects = textLayerRectsFromLayout(cachedLayout.layout);
 
       outputCtx.save();
       try {
@@ -391,7 +439,8 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         outputCtx.drawImage(baseLayer.canvas, 0, 0);
         drawMantleText({
           ctx: outputCtx,
-          layout: cachedLayout.layout
+          layout: cachedLayout.layout,
+          hiddenTextLayerIds: input.hiddenTextLayerIds
         });
       } finally {
         outputCtx.restore();
@@ -404,7 +453,10 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         contentRect,
         frameRect,
         baseFrameRect,
-        frameRotation
+        frameRotation,
+        textRect,
+        textRotation,
+        textLayerRects
       };
     },
     clear,
