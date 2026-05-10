@@ -94,6 +94,8 @@ type InspectorPanelProps = {
   onTextChange: (patch: Partial<MantleCard['text']>) => void;
   onTextLayerAdd: () => void;
   onTextLayerChange: (layerId: string, patch: Partial<MantleTextLayer>) => void;
+  onTextLayerDuplicate: (layerId: string) => void;
+  onTextLayerMove: (layerId: string, direction: -1 | 1) => void;
   onTextLayerRemove: (layerId: string) => void;
   onActiveTextLayerChange: (layerId: string | undefined) => void;
 };
@@ -156,6 +158,7 @@ const TEXT_FONT_OPTIONS: Array<{ value: MantleTextFont; label: string }> = [
 ];
 
 const SHOW_MAGIC_TEXT_LAYOUT = false;
+const MAX_TEXT_LAYERS = 24;
 
 function resolveMagicTextLayout(
   card: MantleCard,
@@ -658,6 +661,8 @@ export function InspectorPanel({
   onTextChange,
   onTextLayerAdd,
   onTextLayerChange,
+  onTextLayerDuplicate,
+  onTextLayerMove,
   onTextLayerRemove,
   onActiveTextLayerChange
 }: InspectorPanelProps) {
@@ -784,7 +789,12 @@ export function InspectorPanel({
         : `${styles.paletteRow} ${styles.paletteRowSingle}`;
   const textLayers = card.textLayers ?? [];
   const activeTextLayer =
-    textLayers.find((layer) => layer.id === card.activeTextLayerId) ?? textLayers[0];
+    textLayers.find((layer) => layer.id === card.activeTextLayerId) ??
+    textLayers[textLayers.length - 1];
+  const textLayerEntries = textLayers
+    .map((layer, index) => ({ layer, index }))
+    .reverse();
+  const canAddTextLayer = textLayers.length < MAX_TEXT_LAYERS;
   const activateTextLayer = () => onTextLayerAdd();
   const applyMagicTextLayout = () =>
     onTextChange(resolveMagicTextLayout(card, activeTarget));
@@ -1275,21 +1285,30 @@ export function InspectorPanel({
                 type="button"
                 className={`${styles.actionButton} ${styles.textAddButton}`}
                 onClick={activateTextLayer}
+                disabled={!canAddTextLayer}
+                title={
+                  canAddTextLayer
+                    ? 'Add text layer'
+                    : `Maximum ${MAX_TEXT_LAYERS} text layers`
+                }
               >
-                <Icon name="type" size={12} aria-hidden="true" />
+                <Icon name="plus" size={13} aria-hidden="true" />
                 <span>Add</span>
               </button>
             </div>
           </div>
           {textLayers.length > 0 ? (
             <div className={styles.textLayerList}>
-              {textLayers.map((layer, index) => {
+              {textLayerEntries.map(({ layer, index }) => {
                 const layerLabel = layer.text.trim() || `Text ${index + 1}`;
+                const isActive = layer.id === activeTextLayer?.id;
+                const canBringForward = index < textLayers.length - 1;
+                const canSendBackward = index > 0;
                 return (
                   <div
                     key={layer.id}
                     className={
-                      layer.id === activeTextLayer?.id
+                      isActive
                         ? `${styles.textLayerItem} ${styles.textLayerItemActive}`
                         : styles.textLayerItem
                     }
@@ -1306,18 +1325,59 @@ export function InspectorPanel({
                         })
                       }
                     />
-                    <button
-                      type="button"
-                      className={styles.textLayerDelete}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onTextLayerRemove(layer.id);
-                      }}
-                      title="Remove text layer"
-                      aria-label={`Remove ${layerLabel}`}
-                    >
-                      <Icon name="close" size={12} aria-hidden="true" />
-                    </button>
+                    <div className={styles.textLayerRowActions}>
+                      <button
+                        type="button"
+                        className={styles.textLayerIconButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onTextLayerMove(layer.id, 1);
+                        }}
+                        disabled={!canBringForward}
+                        title="Bring forward"
+                        aria-label={`Bring ${layerLabel} forward`}
+                      >
+                        <Icon name="arrow-up" size={12} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.textLayerIconButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onTextLayerMove(layer.id, -1);
+                        }}
+                        disabled={!canSendBackward}
+                        title="Send backward"
+                        aria-label={`Send ${layerLabel} backward`}
+                      >
+                        <Icon name="arrow-down" size={12} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.textLayerIconButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onTextLayerDuplicate(layer.id);
+                        }}
+                        disabled={!canAddTextLayer}
+                        title="Duplicate layer"
+                        aria-label={`Duplicate ${layerLabel}`}
+                      >
+                        <Icon name="copy" size={12} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.textLayerIconButton} ${styles.textLayerDelete}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onTextLayerRemove(layer.id);
+                        }}
+                        title="Remove text layer"
+                        aria-label={`Remove ${layerLabel}`}
+                      >
+                        <Icon name="close" size={12} aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}

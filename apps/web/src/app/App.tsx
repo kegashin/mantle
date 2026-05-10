@@ -123,6 +123,7 @@ const SUPPORTED_MEDIA_FORMAT_HINT = 'PNG, JPG, WebP, MP4, MOV, or WebM';
 const DEFAULT_PROJECT_NAME = 'Mantle Draft';
 const PROJECT_HISTORY_LIMIT = 80;
 const PROJECT_HISTORY_MERGE_WINDOW_MS = 650;
+const MAX_TEXT_LAYERS = 24;
 
 type AppNoticeTone = 'success' | 'info' | 'warning' | 'error';
 
@@ -1816,24 +1817,34 @@ export function App() {
       ? crypto.randomUUID()
       : `text-${Date.now().toString(36)}`;
 
+  const createDefaultTextLayer = (
+    id: string,
+    layers: MantleTextLayer[]
+  ): MantleTextLayer => {
+    const offset = Math.min(0.16, layers.length * 0.035);
+    return {
+      id,
+      text: 'Text',
+      font: activeCard.text.titleFont === 'sans' ? 'display' : activeCard.text.titleFont,
+      align: 'center',
+      color: activeCard.text.titleColor,
+      scale: 1.08,
+      width: 0.34,
+      shadow: 'auto',
+      transform: {
+        x: Math.min(0.82, 0.5 + offset),
+        y: Math.min(0.82, 0.5 + offset),
+        rotation: 0
+      }
+    };
+  };
+
   const addActiveTextLayer = () => {
     const id = createTextLayerId();
     const layers = activeCard.textLayers ?? [];
+    if (layers.length >= MAX_TEXT_LAYERS) return;
     updateActiveCard({
-      textLayers: [
-        ...layers,
-        {
-          id,
-          text: 'Text',
-          font: activeCard.text.titleFont,
-          align: 'center',
-          color: activeCard.text.titleColor,
-          scale: 1,
-          width: 0.28,
-          shadow: 'auto',
-          transform: { x: 0.5, y: 0.5, rotation: 0 }
-        }
-      ],
+      textLayers: [...layers, createDefaultTextLayer(id, layers)],
       activeTextLayerId: id
     });
   };
@@ -1851,10 +1862,62 @@ export function App() {
   };
 
   const removeActiveTextLayer = (layerId: string) => {
-    const layers = (activeCard.textLayers ?? []).filter((layer) => layer.id !== layerId);
+    const existingLayers = activeCard.textLayers ?? [];
+    const removedIndex = existingLayers.findIndex((layer) => layer.id === layerId);
+    const layers = existingLayers.filter((layer) => layer.id !== layerId);
+    const nextActiveTextLayerId =
+      activeCard.activeTextLayerId === layerId
+        ? layers[Math.min(Math.max(removedIndex, 0), layers.length - 1)]?.id
+        : activeCard.activeTextLayerId;
     updateActiveCard({
       textLayers: layers.length > 0 ? layers : undefined,
-      activeTextLayerId: layers[0]?.id
+      activeTextLayerId: nextActiveTextLayerId
+    });
+  };
+
+  const duplicateActiveTextLayer = (layerId: string) => {
+    const layers = activeCard.textLayers ?? [];
+    if (layers.length >= MAX_TEXT_LAYERS) return;
+    const layerIndex = layers.findIndex((layer) => layer.id === layerId);
+    const layer = layers[layerIndex];
+    if (!layer) return;
+
+    const id = createTextLayerId();
+    const duplicate: MantleTextLayer = {
+      ...layer,
+      id,
+      transform: {
+        ...layer.transform,
+        x: Math.min(0.92, layer.transform.x + 0.035),
+        y: Math.min(0.92, layer.transform.y + 0.035)
+      }
+    };
+    updateActiveCard({
+      textLayers: [
+        ...layers.slice(0, layerIndex + 1),
+        duplicate,
+        ...layers.slice(layerIndex + 1)
+      ],
+      activeTextLayerId: id
+    });
+  };
+
+  const moveActiveTextLayer = (layerId: string, direction: -1 | 1) => {
+    const layers = activeCard.textLayers ?? [];
+    const layerIndex = layers.findIndex((layer) => layer.id === layerId);
+    const targetIndex = layerIndex + direction;
+    if (layerIndex < 0 || targetIndex < 0 || targetIndex >= layers.length) return;
+
+    const nextLayers = [...layers];
+    const movingLayer = nextLayers[layerIndex];
+    const targetLayer = nextLayers[targetIndex];
+    if (!movingLayer || !targetLayer) return;
+    nextLayers[layerIndex] = targetLayer;
+    nextLayers[targetIndex] = movingLayer;
+
+    updateActiveCard({
+      textLayers: nextLayers,
+      activeTextLayerId: layerId
     });
   };
 
@@ -3194,6 +3257,8 @@ export function App() {
           onTextChange={updateActiveText}
           onTextLayerAdd={addActiveTextLayer}
           onTextLayerChange={updateActiveTextLayer}
+          onTextLayerDuplicate={duplicateActiveTextLayer}
+          onTextLayerMove={moveActiveTextLayer}
           onTextLayerRemove={removeActiveTextLayer}
           onActiveTextLayerChange={(activeTextLayerId) =>
             updateActiveCard({ activeTextLayerId })

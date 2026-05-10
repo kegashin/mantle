@@ -12,6 +12,9 @@ export type IconName =
   | 'reset'
   | 'undo'
   | 'redo'
+  | 'plus'
+  | 'arrow-up'
+  | 'arrow-down'
   | 'play'
   | 'pause'
   | 'volume'
@@ -137,6 +140,24 @@ const paths: Record<IconName, ReactElement> = {
     <>
       <path d="m15 14 5-5-5-5" />
       <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </>
+  ),
+  plus: (
+    <>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </>
+  ),
+  'arrow-up': (
+    <>
+      <path d="M12 19V5" />
+      <path d="m6 11 6-6 6 6" />
+    </>
+  ),
+  'arrow-down': (
+    <>
+      <path d="M12 5v14" />
+      <path d="m6 13 6 6 6-6" />
     </>
   ),
   play: <path d="M6 4v16l14-8Z" />,

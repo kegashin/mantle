@@ -1348,7 +1348,8 @@ export function CardCanvas({
   });
   const textLayers = card.textLayers ?? [];
   const activeTextLayer =
-    textLayers.find((layer) => layer.id === card.activeTextLayerId) ?? textLayers[0];
+    textLayers.find((layer) => layer.id === card.activeTextLayerId) ??
+    textLayers[textLayers.length - 1];
   const activeTextLayerId = activeTextLayer?.id;
   const editingTextLayer = Boolean(activeTextLayer);
   const hasAssetSource = Boolean(asset?.objectUrl);

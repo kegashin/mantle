@@ -517,6 +517,11 @@
   box-shadow: var(--control-glow);
 }
 
+.actionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .backgroundAnimationToggle {
   display: flex;
   align-items: center;
@@ -1040,11 +1045,11 @@
 
 .textLayerItem {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 26px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px;
   min-width: 0;
-  height: 32px;
+  min-height: 34px;
   padding: 2px 3px 2px 8px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
@@ -1076,7 +1081,13 @@
   color: var(--color-text-muted);
 }
 
-.textLayerDelete {
+.textLayerRowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.textLayerIconButton {
   display: inline-grid;
   place-items: center;
   width: 24px;
@@ -1089,6 +1100,23 @@
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
+}
+
+.textLayerIconButton:hover,
+.textLayerIconButton:focus-visible {
+  border-color: var(--color-hairline-strong);
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--color-text);
+}
+
+.textLayerIconButton:focus-visible {
+  outline: none;
+  box-shadow: var(--control-glow);
+}
+
+.textLayerIconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
 }
 
 .textLayerItem:hover,
