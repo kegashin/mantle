@@ -1317,6 +1317,7 @@ export function CardCanvas({
   const latestRenderStateRef = useRef<PreviewRenderState | null>(null);
   const schedulePreviewRenderRef = useRef<(() => void) | null>(null);
   const motionFrameTimeRef = useRef(0);
+  const motionPreviewActiveRef = useRef(motionPreviewActive);
   const backgroundAnimationEnabledRef = useRef(backgroundAnimationEnabled);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface | null>(null);
@@ -1387,6 +1388,7 @@ export function CardCanvas({
     hasAssetSource
   };
   backgroundAnimationEnabledRef.current = backgroundAnimationEnabled;
+  motionPreviewActiveRef.current = motionPreviewActive;
 
   const setVideoDecoderRef = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node;
@@ -1856,6 +1858,7 @@ export function CardCanvas({
       const backgroundTimeMs = backgroundAnimationEnabledRef.current
         ? sourceFrame?.timeMs ?? motionFrameTimeRef.current
         : 0;
+      const renderMode = motionPreviewActiveRef.current ? 'export' : 'preview';
       const renderPayload: PreviewWorkerRequest = {
         card: state.card,
         target: state.target,
@@ -1863,6 +1866,7 @@ export function CardCanvas({
         backgroundAsset: state.backgroundAsset,
         scale,
         timeMs: backgroundTimeMs,
+        renderMode,
         showEmptyPlaceholderText: state.hasAssetSource,
         hiddenTextLayerIds: state.hiddenTextLayerIds
       };
@@ -1940,7 +1944,7 @@ export function CardCanvas({
           const rendered = await previewRenderer.render({
             ...renderPayload,
             canvas: bufferCanvas,
-            renderMode: 'preview',
+            renderMode,
             sourceFrame,
             timeMs: backgroundTimeMs
           });
@@ -2021,6 +2025,7 @@ export function CardCanvas({
     backgroundAsset,
     backgroundAnimationEnabled,
     hasAssetSource,
+    motionPreviewActive,
     videoElement,
     textEditorOpen,
     activeTextLayerId

@@ -3,6 +3,7 @@ import type {
   MantleRenderableAsset,
   MantleSurfaceTarget
 } from '@mantle/schemas/model';
+import type { MantleRenderMode } from '@mantle/engine/render';
 
 export type PreviewRenderRequestPayload = {
   card: MantleCard;
@@ -11,6 +12,7 @@ export type PreviewRenderRequestPayload = {
   backgroundAsset?: MantleRenderableAsset | undefined;
   scale: number;
   timeMs?: number | undefined;
+  renderMode?: MantleRenderMode | undefined;
   showEmptyPlaceholderText: boolean;
   hiddenTextLayerIds?: string[] | undefined;
 };

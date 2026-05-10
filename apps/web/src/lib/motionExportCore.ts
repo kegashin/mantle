@@ -258,6 +258,7 @@ export async function renderMantleMotionFrame({
     timeMs: backgroundTimeMs,
     scale: input.scale ?? input.card.export.scale,
     canvas,
-    renderMode: 'export'
+    renderMode: 'export',
+    showEmptyPlaceholderText: Boolean(input.asset)
   });
 }

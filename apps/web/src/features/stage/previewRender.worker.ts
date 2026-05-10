@@ -65,7 +65,7 @@ scope.onmessage = async (event) => {
       asset: request.asset,
       backgroundAsset: request.backgroundAsset,
       canvas,
-      renderMode: 'preview',
+      renderMode: request.renderMode ?? 'preview',
       scale: request.scale,
       timeMs: request.timeMs ?? 0,
       showEmptyPlaceholderText: request.showEmptyPlaceholderText,
