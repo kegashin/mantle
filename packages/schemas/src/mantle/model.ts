@@ -7,14 +7,20 @@ export const MANTLE_ASSET_ROLES = [
 ] as const;
 export type MantleAssetRole = (typeof MANTLE_ASSET_ROLES)[number];
 
+export const MANTLE_ASSET_MEDIA_KINDS = ['image', 'video'] as const;
+export type MantleAssetMediaKind = (typeof MANTLE_ASSET_MEDIA_KINDS)[number];
+
 export type MantleAsset = {
   id: string;
   role: MantleAssetRole;
   name: string;
   mimeType?: string | undefined;
+  mediaKind?: MantleAssetMediaKind | undefined;
   width?: number | undefined;
   height?: number | undefined;
   fileSize?: number | undefined;
+  durationMs?: number | undefined;
+  frameRate?: number | undefined;
   sourcePath?: string | undefined;
 };
 
@@ -133,13 +139,23 @@ export type MantleBrand = {
   logoAssetId?: string | undefined;
 };
 
-export const MANTLE_EXPORT_FORMATS = ['png', 'jpeg', 'webp'] as const;
+export const MANTLE_EXPORT_FORMATS = ['png', 'jpeg', 'webp', 'gif', 'webm'] as const;
 export type MantleExportFormat = (typeof MANTLE_EXPORT_FORMATS)[number];
 
 export type MantleExportSettings = {
   format: MantleExportFormat;
   scale: number;
   quality?: number | undefined;
+  gifDurationMs?: number | undefined;
+  gifLoop?: boolean | undefined;
+  gifLoopCount?: number | undefined;
+  videoStartMs?: number | undefined;
+  videoEndMs?: number | undefined;
+  videoLoop?: boolean | undefined;
+  videoDurationMs?: number | undefined;
+  videoFrameRate?: number | undefined;
+  videoBitrateMbps?: number | undefined;
+  animateBackground?: boolean | undefined;
   fileName?: string | undefined;
 };
 

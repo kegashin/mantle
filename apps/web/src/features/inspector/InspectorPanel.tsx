@@ -64,6 +64,10 @@ type InspectorPanelProps = {
   onBackgroundImageChoose: () => void;
   onBackgroundImageRelink: () => void;
   onBackgroundImageClear: () => void;
+  showBackgroundAnimationControl: boolean;
+  backgroundAnimationAvailable: boolean;
+  backgroundAnimationEnabled: boolean;
+  onBackgroundAnimationChange: (enabled: boolean) => void;
   onPaletteChange: (patch: Partial<MantlePalette>) => void;
   onFramePresetChange: (preset: MantleFramePreset) => void;
   onFrameBoxStyleChange: (style: MantleFrameBoxStyle) => void;
@@ -577,13 +581,6 @@ function Slider({
         )}
       </span>
       <span className={styles.sliderRow}>
-        <span className={styles.sliderTicks} aria-hidden="true">
-          <span className={styles.sliderTickMajor} />
-          <span className={styles.sliderTickMinor} />
-          <span className={styles.sliderTickMajor} />
-          <span className={styles.sliderTickMinor} />
-          <span className={styles.sliderTickMajor} />
-        </span>
         <input
           className={styles.sliderInput}
           type="range"
@@ -645,6 +642,10 @@ export function InspectorPanel({
   onBackgroundImageChoose,
   onBackgroundImageRelink,
   onBackgroundImageClear,
+  showBackgroundAnimationControl,
+  backgroundAnimationAvailable,
+  backgroundAnimationEnabled,
+  onBackgroundAnimationChange,
   onPaletteChange,
   onFramePresetChange,
   onFrameBoxStyleChange,
@@ -795,6 +796,26 @@ export function InspectorPanel({
           <span className={styles.identityLabel}>{activeBackgroundPreset.label}</span>
           <span className={styles.identityHint}>{activeBackgroundPreset.hint}</span>
         </div>
+        {showBackgroundAnimationControl ? (
+          <label className={styles.backgroundAnimationToggle}>
+            <span>
+              <strong>Animation</strong>
+              <span>
+                {backgroundAnimationAvailable
+                  ? 'Animate this backdrop in motion preview and video export.'
+                  : 'This backdrop is static.'}
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={backgroundAnimationAvailable && backgroundAnimationEnabled}
+              disabled={!backgroundAnimationAvailable}
+              onChange={(event) =>
+                onBackgroundAnimationChange(event.currentTarget.checked)
+              }
+            />
+          </label>
+        ) : null}
         {isImageBackground ? (
           <div
             className={

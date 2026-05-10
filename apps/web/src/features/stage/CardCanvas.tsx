@@ -7,7 +7,10 @@ import {
   resolveSourceCropForContent,
   resolveSourceCropZoom
 } from '@mantle/engine/render';
-import type { MantlePreviewRenderer } from '@mantle/engine/render';
+import type {
+  MantlePreviewRenderer,
+  MantleRuntimeFrameSource
+} from '@mantle/engine/render';
 import type {
   MantleCard,
   MantleFrameTransform,
@@ -19,6 +22,7 @@ import type {
   MantleTextTransform
 } from '@mantle/schemas/model';
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -79,12 +83,44 @@ const HEAVY_PREVIEW_BACKGROUND_IDS = new Set([
   'signal-field',
   'smoke-veil'
 ]);
+const ANIMATED_PREVIEW_BACKGROUND_IDS = new Set([
+  'aurora-gradient',
+  'marbling',
+  'smoke-veil'
+]);
+
+export type VideoPlaybackState = {
+  currentTimeMs: number;
+  durationMs: number;
+  paused: boolean;
+  muted: boolean;
+};
+
+export type VideoClipRange = {
+  startMs: number;
+  endMs: number;
+  loop: boolean;
+};
+
+export type VideoPlaybackCommand =
+  | { id: number; type: 'toggle-playback' }
+  | { id: number; type: 'seek'; timeMs: number }
+  | { id: number; type: 'toggle-muted' };
+
+export type VideoPlaybackCommandInput =
+  | { type: 'toggle-playback' }
+  | { type: 'seek'; timeMs: number }
+  | { type: 'toggle-muted' };
 
 type CardCanvasProps = {
   card: MantleCard;
   target: MantleSurfaceTarget;
   asset?: MantleRenderableAsset | undefined;
   backgroundAsset?: MantleRenderableAsset | undefined;
+  motionPreviewActive?: boolean | undefined;
+  backgroundAnimationEnabled?: boolean | undefined;
+  videoClip?: VideoClipRange | undefined;
+  videoPlaybackCommand?: VideoPlaybackCommand | undefined;
   onChooseSource?: () => void;
   onRelinkSource?: () => void;
   onSourcePlacementChange?: (placement: MantleSourcePlacement) => void;
@@ -92,6 +128,7 @@ type CardCanvasProps = {
   onTextChange?: (patch: Partial<MantleCard['text']>) => void;
   onTextLayerChange?: (layerId: string, patch: Partial<MantleTextLayer>) => void;
   onActiveTextLayerChange?: (layerId: string | undefined) => void;
+  onVideoPlaybackStateChange?: (state: VideoPlaybackState) => void;
 };
 
 type PreviewRenderState = {
@@ -115,6 +152,22 @@ type PreviewWorkerClient = {
   dispose: () => void;
 };
 
+type RequestVideoFrameMetadata = {
+  mediaTime: number;
+  width?: number | undefined;
+  height?: number | undefined;
+};
+
+type RequestVideoFrameCallback = (
+  now: number,
+  metadata: RequestVideoFrameMetadata
+) => void;
+
+type RequestVideoFrameElement = HTMLVideoElement & {
+  requestVideoFrameCallback?: (callback: RequestVideoFrameCallback) => number;
+  cancelVideoFrameCallback?: (id: number) => void;
+};
+
 type StageRect = {
   x: number;
   y: number;
@@ -128,6 +181,8 @@ type PreviewSurface = {
   canvasCssRect: StageRect;
   contentRect: StageRect;
   contentCssRect: StageRect;
+  contentRadius: number;
+  contentCornerStyle: 'all' | 'bottom' | 'none';
   frameRect: StageRect;
   frameCssRect: StageRect;
   baseFrameRect: StageRect;
@@ -958,6 +1013,27 @@ function sourceImageRectForCrop(
   };
 }
 
+function resolveVideoRuntimeFrameSource(
+  asset: MantleRenderableAsset | undefined,
+  video: HTMLVideoElement | null
+): MantleRuntimeFrameSource | undefined {
+  if (!asset || asset.mediaKind !== 'video' || !video) return undefined;
+  if (video.readyState < 2) return undefined;
+
+  const width = video.videoWidth || asset.width || 0;
+  const height = video.videoHeight || asset.height || 0;
+  if (width <= 0 || height <= 0) return undefined;
+
+  const timeMs = Number.isFinite(video.currentTime) ? video.currentTime * 1000 : 0;
+  return {
+    source: video,
+    width,
+    height,
+    timeMs,
+    cacheKey: `${asset.id}:${Math.round(timeMs)}`
+  };
+}
+
 function snapSourceCropToFrame({
   crop,
   contentRect
@@ -1024,6 +1100,8 @@ function previewSurfaceChanged(
     rectChanged(current.canvasCssRect, next.canvasCssRect) ||
     rectChanged(current.contentRect, next.contentRect) ||
     rectChanged(current.contentCssRect, next.contentCssRect) ||
+    Math.abs(current.contentRadius - next.contentRadius) > 0.5 ||
+    current.contentCornerStyle !== next.contentCornerStyle ||
     rectChanged(current.frameRect, next.frameRect) ||
     rectChanged(current.frameCssRect, next.frameCssRect) ||
     rectChanged(current.baseFrameRect, next.baseFrameRect) ||
@@ -1040,6 +1118,18 @@ function previewSurfaceChanged(
     Math.abs(current.frameRotation - next.frameRotation) > 0.1 ||
     Math.abs(current.textRotation - next.textRotation) > 0.1
   );
+}
+
+function contentCornerStyleVars(surface: PreviewSurface): CSSProperties {
+  const radius = Math.max(0, surface.contentRadius);
+  const topRadius = surface.contentCornerStyle === 'all' ? radius : 0;
+  const bottomRadius = surface.contentCornerStyle === 'none' ? 0 : radius;
+
+  return {
+    '--content-radius': `${radius}px`,
+    '--content-radius-top': `${topRadius}px`,
+    '--content-radius-bottom': `${bottomRadius}px`
+  } as CSSProperties;
 }
 
 function createPreviewWorkerClient(): PreviewWorkerClient {
@@ -1108,6 +1198,8 @@ function createPreviewWorkerClient(): PreviewWorkerClient {
         width: response.width,
         height: response.height,
         contentRect: response.contentRect,
+        contentRadius: response.contentRadius,
+        contentCornerStyle: response.contentCornerStyle,
         frameRect: response.frameRect,
         baseFrameRect: response.baseFrameRect,
         frameRotation: response.frameRotation,
@@ -1183,20 +1275,27 @@ export function CardCanvas({
   target,
   asset,
   backgroundAsset,
+  motionPreviewActive = false,
+  backgroundAnimationEnabled = true,
+  videoClip,
+  videoPlaybackCommand,
   onChooseSource,
   onRelinkSource,
   onSourcePlacementChange,
   onFrameTransformChange,
   onTextChange,
   onTextLayerChange,
-  onActiveTextLayerChange
+  onActiveTextLayerChange,
+  onVideoPlaybackStateChange
 }: CardCanvasProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const bufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewWorkerRef = useRef<PreviewWorkerClient | null>(null);
   const previewRendererRef = useRef<MantlePreviewRenderer | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastVideoCommandIdRef = useRef(0);
   const sourceDragRef = useRef<SourceDragState | null>(null);
   const frameDragRef = useRef<FrameDragState | null>(null);
   const textDragRef = useRef<TextDragState | null>(null);
@@ -1217,8 +1316,11 @@ export function CardCanvas({
   const lastPreviewRenderStartRef = useRef(0);
   const latestRenderStateRef = useRef<PreviewRenderState | null>(null);
   const schedulePreviewRenderRef = useRef<(() => void) | null>(null);
+  const motionFrameTimeRef = useRef(0);
+  const backgroundAnimationEnabledRef = useRef(backgroundAnimationEnabled);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface | null>(null);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [sourceEditorOpen, setSourceEditorOpen] = useState(false);
   const [frameEditorOpen, setFrameEditorOpen] = useState(false);
   const [textEditorOpen, setTextEditorOpen] = useState(false);
@@ -1236,21 +1338,60 @@ export function CardCanvas({
     useState<number | null>(null);
   const [textRotationSnapAngle, setTextRotationSnapAngle] =
     useState<number | null>(null);
+  const [previewAnimationAllowed, setPreviewAnimationAllowed] = useState(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return true;
+    return (
+      document.visibilityState !== 'hidden' &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+  });
   const textLayers = card.textLayers ?? [];
   const activeTextLayer =
     textLayers.find((layer) => layer.id === card.activeTextLayerId) ?? textLayers[0];
   const activeTextLayerId = activeTextLayer?.id;
   const editingTextLayer = Boolean(activeTextLayer);
   const hasAssetSource = Boolean(asset?.objectUrl);
+  const isVideoSource = hasAssetSource && asset?.mediaKind === 'video';
+  const canAnimateBackground =
+    previewAnimationAllowed &&
+    motionPreviewActive &&
+    backgroundAnimationEnabled &&
+    ANIMATED_PREVIEW_BACKGROUND_IDS.has(card.background.presetId);
+  const hasStillAssetSource = hasAssetSource && !isVideoSource;
   const isMissingSource = Boolean(card.sourceAssetId && !hasAssetSource);
+  const videoClipStartMs = videoClip?.startMs ?? 0;
+  const videoClipEndMs = Math.max(
+    videoClipStartMs + 1,
+    videoClip?.endMs ?? asset?.durationMs ?? videoClipStartMs + 1
+  );
+  const videoClipLoop = videoClip?.loop ?? true;
+  const reportVideoPlaybackState = useCallback(
+    (video: HTMLVideoElement) => {
+      onVideoPlaybackStateChange?.({
+        currentTimeMs: Number.isFinite(video.currentTime)
+          ? video.currentTime * 1000
+          : 0,
+        durationMs: Number.isFinite(video.duration) ? video.duration * 1000 : 0,
+        paused: video.paused,
+        muted: video.muted
+      });
+    },
+    [onVideoPlaybackStateChange]
+  );
 
   latestRenderStateRef.current = {
     card,
     target,
-    asset,
+    asset: hasAssetSource ? asset : undefined,
     backgroundAsset,
     hasAssetSource
   };
+  backgroundAnimationEnabledRef.current = backgroundAnimationEnabled;
+
+  const setVideoDecoderRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    setVideoElement(node);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1270,6 +1411,24 @@ export function CardCanvas({
   }, []);
 
   useEffect(() => {
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updateAnimationAllowed = () => {
+      setPreviewAnimationAllowed(
+        document.visibilityState !== 'hidden' && !reducedMotionQuery.matches
+      );
+    };
+
+    updateAnimationAllowed();
+    document.addEventListener('visibilitychange', updateAnimationAllowed);
+    reducedMotionQuery.addEventListener('change', updateAnimationAllowed);
+
+    return () => {
+      document.removeEventListener('visibilitychange', updateAnimationAllowed);
+      reducedMotionQuery.removeEventListener('change', updateAnimationAllowed);
+    };
+  }, []);
+
+  useEffect(() => {
     if (hasAssetSource) return;
     setSourceEditorOpen(false);
     setSourceDragging(false);
@@ -1279,6 +1438,209 @@ export function CardCanvas({
     latestSourceDraftRef.current = null;
     pendingSourceDraftRef.current = null;
   }, [hasAssetSource]);
+
+  useEffect(() => {
+    if (!isVideoSource && (!motionPreviewActive || !backgroundAnimationEnabled)) {
+      lastVideoCommandIdRef.current = 0;
+      motionFrameTimeRef.current = 0;
+    }
+  }, [backgroundAnimationEnabled, isVideoSource, motionPreviewActive, asset?.id]);
+
+  useEffect(() => {
+    if (!canAnimateBackground || isVideoSource) return undefined;
+
+    let disposed = false;
+    let frameId = 0;
+    const startedAt = performance.now() - motionFrameTimeRef.current;
+
+    const tick = (now: number) => {
+      if (disposed) return;
+      motionFrameTimeRef.current = now - startedAt;
+      schedulePreviewRenderRef.current?.();
+      frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frameId);
+    };
+  }, [canAnimateBackground, isVideoSource]);
+
+  useEffect(() => {
+    const video = videoElement ?? videoRef.current;
+    if (!isVideoSource || !video) return;
+
+    const currentMs = Number.isFinite(video.currentTime) ? video.currentTime * 1000 : 0;
+    if (currentMs < videoClipStartMs || currentMs > videoClipEndMs) {
+      video.currentTime = videoClipStartMs / 1000;
+      reportVideoPlaybackState(video);
+    }
+  }, [
+    isVideoSource,
+    reportVideoPlaybackState,
+    videoClipEndMs,
+    videoClipStartMs,
+    videoElement
+  ]);
+
+  useEffect(() => {
+    if (!videoPlaybackCommand || !isVideoSource) return;
+    if (videoPlaybackCommand.id <= lastVideoCommandIdRef.current) return;
+
+    const video = videoElement ?? videoRef.current;
+    if (!video) return;
+    lastVideoCommandIdRef.current = videoPlaybackCommand.id;
+
+    if (videoPlaybackCommand.type === 'toggle-playback') {
+      if (video.paused) {
+        const currentMs = Number.isFinite(video.currentTime)
+          ? video.currentTime * 1000
+          : 0;
+        if (
+          currentMs < videoClipStartMs ||
+          currentMs >= Math.max(videoClipStartMs, videoClipEndMs - 30)
+        ) {
+          video.currentTime = videoClipStartMs / 1000;
+        }
+        void video.play().catch(() => undefined);
+      } else {
+        video.pause();
+      }
+      reportVideoPlaybackState(video);
+      return;
+    }
+
+    if (videoPlaybackCommand.type === 'seek') {
+      video.currentTime = clamp(
+        videoPlaybackCommand.timeMs / 1000,
+        videoClipStartMs / 1000,
+        videoClipEndMs / 1000
+      );
+      reportVideoPlaybackState(video);
+      return;
+    }
+
+    if (videoPlaybackCommand.type === 'toggle-muted') {
+      video.muted = !video.muted;
+      reportVideoPlaybackState(video);
+    }
+  }, [
+    asset?.id,
+    isVideoSource,
+    reportVideoPlaybackState,
+    videoClipEndMs,
+    videoClipStartMs,
+    videoElement,
+    videoPlaybackCommand
+  ]);
+
+  useEffect(() => {
+    const video = videoElement;
+    if (!isVideoSource || !video) return undefined;
+
+    let disposed = false;
+    let rafId = 0;
+    let videoFrameCallbackId: number | null = null;
+    const frameVideo = video as RequestVideoFrameElement;
+
+    const cancelQueuedFrame = () => {
+      if (videoFrameCallbackId != null && frameVideo.cancelVideoFrameCallback) {
+        frameVideo.cancelVideoFrameCallback(videoFrameCallbackId);
+      }
+      videoFrameCallbackId = null;
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    };
+
+    const renderCurrentFrame = (timeMs?: number) => {
+      const currentTimeMs =
+        timeMs ??
+        (Number.isFinite(video.currentTime) ? video.currentTime * 1000 : 0);
+      if (currentTimeMs < videoClipStartMs) {
+        video.currentTime = videoClipStartMs / 1000;
+        motionFrameTimeRef.current = videoClipStartMs;
+        reportVideoPlaybackState(video);
+        return;
+      }
+
+      if (currentTimeMs >= videoClipEndMs) {
+        if (videoClipLoop && !video.paused) {
+          video.currentTime = videoClipStartMs / 1000;
+          motionFrameTimeRef.current = videoClipStartMs;
+          schedulePreviewRenderRef.current?.();
+          reportVideoPlaybackState(video);
+          return;
+        }
+
+        if (!video.paused) video.pause();
+        video.currentTime = videoClipEndMs / 1000;
+        motionFrameTimeRef.current = videoClipEndMs;
+        schedulePreviewRenderRef.current?.();
+        reportVideoPlaybackState(video);
+        return;
+      }
+
+      motionFrameTimeRef.current = currentTimeMs;
+      schedulePreviewRenderRef.current?.();
+      reportVideoPlaybackState(video);
+    };
+
+    const requestNextFrame = () => {
+      if (disposed) return;
+
+      if (frameVideo.requestVideoFrameCallback) {
+        if (videoFrameCallbackId != null) return;
+        videoFrameCallbackId = frameVideo.requestVideoFrameCallback((_now, metadata) => {
+          videoFrameCallbackId = null;
+          renderCurrentFrame(metadata.mediaTime * 1000);
+          requestNextFrame();
+        });
+        return;
+      }
+
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        renderCurrentFrame();
+        if (!video.paused && !video.ended) requestNextFrame();
+      });
+    };
+
+    const handleFrameStateChange = () => {
+      renderCurrentFrame();
+      requestNextFrame();
+    };
+
+    video.addEventListener('loadeddata', handleFrameStateChange);
+    video.addEventListener('loadedmetadata', handleFrameStateChange);
+    video.addEventListener('seeked', handleFrameStateChange);
+    video.addEventListener('play', requestNextFrame);
+    video.addEventListener('pause', handleFrameStateChange);
+    video.addEventListener('timeupdate', handleFrameStateChange);
+
+    handleFrameStateChange();
+
+    return () => {
+      disposed = true;
+      video.removeEventListener('loadeddata', handleFrameStateChange);
+      video.removeEventListener('loadedmetadata', handleFrameStateChange);
+      video.removeEventListener('seeked', handleFrameStateChange);
+      video.removeEventListener('play', requestNextFrame);
+      video.removeEventListener('pause', handleFrameStateChange);
+      video.removeEventListener('timeupdate', handleFrameStateChange);
+      cancelQueuedFrame();
+    };
+  }, [
+    asset?.id,
+    isVideoSource,
+    reportVideoPlaybackState,
+    videoClipEndMs,
+    videoClipLoop,
+    videoClipStartMs,
+    videoElement
+  ]);
 
   useEffect(() => {
     if (activeTextLayerId) return;
@@ -1338,6 +1700,8 @@ export function CardCanvas({
       width: number,
       height: number,
       contentRect: StageRect,
+      contentRadius: number,
+      contentCornerStyle: PreviewSurface['contentCornerStyle'],
       frameRect: StageRect,
       baseFrameRect: StageRect,
       frameRotation: number,
@@ -1365,6 +1729,8 @@ export function CardCanvas({
           width: contentRect.width * scaleX,
           height: contentRect.height * scaleY
         },
+        contentRadius: contentRadius * Math.min(scaleX, scaleY),
+        contentCornerStyle,
         frameRect,
         frameCssRect: {
           x: canvasRect.left - wrapRect.left + frameRect.x * scaleX,
@@ -1411,6 +1777,8 @@ export function CardCanvas({
       width: number,
       height: number,
       contentRect: StageRect,
+      contentRadius: number,
+      contentCornerStyle: PreviewSurface['contentCornerStyle'],
       frameRect: StageRect,
       baseFrameRect: StageRect,
       frameRotation: number,
@@ -1431,6 +1799,8 @@ export function CardCanvas({
         width,
         height,
         contentRect,
+        contentRadius,
+        contentCornerStyle,
         frameRect,
         baseFrameRect,
         frameRotation,
@@ -1479,12 +1849,20 @@ export function CardCanvas({
       canvas.style.height = `${cssH}px`;
 
       const scale = resolveStablePreviewScale(state.target);
+      const sourceFrame = resolveVideoRuntimeFrameSource(
+        state.asset,
+        videoRef.current
+      );
+      const backgroundTimeMs = backgroundAnimationEnabledRef.current
+        ? sourceFrame?.timeMs ?? motionFrameTimeRef.current
+        : 0;
       const renderPayload: PreviewWorkerRequest = {
         card: state.card,
         target: state.target,
         asset: state.asset,
         backgroundAsset: state.backgroundAsset,
         scale,
+        timeMs: backgroundTimeMs,
         showEmptyPlaceholderText: state.hasAssetSource,
         hiddenTextLayerIds: state.hiddenTextLayerIds
       };
@@ -1492,7 +1870,11 @@ export function CardCanvas({
       try {
         let renderedInWorker = false;
 
-        if (!shouldUsePreviewWorker(state.card, state.target, scale)) {
+        if (
+          sourceFrame ||
+          state.asset?.mediaKind === 'video' ||
+          !shouldUsePreviewWorker(state.card, state.target, scale)
+        ) {
           previewWorkerRef.current?.dispose();
           previewWorkerRef.current = null;
         } else {
@@ -1517,6 +1899,8 @@ export function CardCanvas({
                 rendered.width,
                 rendered.height,
                 rendered.contentRect,
+                rendered.contentRadius,
+                rendered.contentCornerStyle,
                 rendered.frameRect,
                 rendered.baseFrameRect,
                 rendered.frameRotation,
@@ -1556,7 +1940,9 @@ export function CardCanvas({
           const rendered = await previewRenderer.render({
             ...renderPayload,
             canvas: bufferCanvas,
-            renderMode: 'preview'
+            renderMode: 'preview',
+            sourceFrame,
+            timeMs: backgroundTimeMs
           });
           if (disposed || seq !== renderSeqRef.current) return;
 
@@ -1565,6 +1951,8 @@ export function CardCanvas({
             rendered.width,
             rendered.height,
             rendered.contentRect,
+            rendered.contentRadius,
+            rendered.contentCornerStyle,
             rendered.frameRect,
             rendered.baseFrameRect,
             rendered.frameRotation,
@@ -1631,7 +2019,9 @@ export function CardCanvas({
     target,
     asset,
     backgroundAsset,
+    backgroundAnimationEnabled,
     hasAssetSource,
+    videoElement,
     textEditorOpen,
     activeTextLayerId
   ]);
@@ -1642,6 +2032,7 @@ export function CardCanvas({
         top: `${previewSurface.contentCssRect.y}px`,
         width: `${previewSurface.contentCssRect.width}px`,
         height: `${previewSurface.contentCssRect.height}px`,
+        ...contentCornerStyleVars(previewSurface),
         transform:
           previewSurface.frameRotation === 0
             ? undefined
@@ -1658,22 +2049,23 @@ export function CardCanvas({
     Boolean(onSourcePlacementChange);
   const coverCrop = resolveEditableCrop(
     { mode: 'fill' },
-    asset,
+    hasAssetSource ? asset : undefined,
     previewSurface
   );
   const activeCrop = resolveEditableCrop(
     card.sourcePlacement,
-    asset,
+    hasAssetSource ? asset : undefined,
     previewSurface
   );
   const visibleCrop = sourceDraftCrop ?? activeCrop;
   const activeZoom = resolveSourceCropZoom(visibleCrop, coverCrop);
   const showSourcePreview =
+    hasStillAssetSource &&
     Boolean(asset?.objectUrl) &&
     Boolean(previewSurface) &&
     (Boolean(sourceDraftCrop) || (card.sourcePlacement?.mode ?? 'fit') !== 'fit');
   const sourcePreviewStyle =
-    previewSurface && showSourcePreview
+    previewSurface && (showSourcePreview || (isVideoSource && sourceEditorOpen))
       ? sourcePreviewImageStyle(visibleCrop, previewSurface.contentCssRect)
       : undefined;
   const activeFrameTransform = normalizeFrameTransform(card.frameTransform);
@@ -2441,6 +2833,28 @@ export function CardCanvas({
             />
           ))
         : null}
+      {isVideoSource && asset?.objectUrl ? (
+        <video
+          ref={setVideoDecoderRef}
+          className={styles.videoDecoder}
+          playsInline
+          preload="auto"
+          src={asset.objectUrl}
+          onDurationChange={(event) =>
+            reportVideoPlaybackState(event.currentTarget)
+          }
+          onLoadedData={() => schedulePreviewRenderRef.current?.()}
+          onLoadedMetadata={(event) => {
+            reportVideoPlaybackState(event.currentTarget);
+            schedulePreviewRenderRef.current?.();
+          }}
+          onPause={(event) => reportVideoPlaybackState(event.currentTarget)}
+          onPlay={(event) => reportVideoPlaybackState(event.currentTarget)}
+          onVolumeChange={(event) =>
+            reportVideoPlaybackState(event.currentTarget)
+          }
+        />
+      ) : null}
       {hasAssetSource && sourceEditorStyle && !frameEditorOpen && !sourceEditorOpen && !textEditorOpen && (canEditFrame || canEditSource) ? (
         <div className={styles.stageHotspot} style={sourceEditorStyle}>
           <div
@@ -2462,9 +2876,9 @@ export function CardCanvas({
                 type="button"
                 className={styles.stageHotspotButton}
                 onClick={openSourceEditor}
-                title="Edit image placement"
+                title="Edit media placement"
               >
-                Image
+                Media
               </button>
             ) : null}
           </div>
@@ -2724,13 +3138,24 @@ export function CardCanvas({
         >
           {asset?.objectUrl && sourcePreviewStyle ? (
             <div className={styles.sourcePreviewClip} aria-hidden="true">
-              <img
-                alt=""
-                className={styles.sourcePreviewImage}
-                draggable={false}
-                src={asset.objectUrl}
-                style={sourcePreviewStyle}
-              />
+              {isVideoSource ? (
+                <video
+                  className={styles.sourcePreviewImage}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  src={asset.objectUrl}
+                  style={sourcePreviewStyle}
+                />
+              ) : (
+                <img
+                  alt=""
+                  className={styles.sourcePreviewImage}
+                  draggable={false}
+                  src={asset.objectUrl}
+                  style={sourcePreviewStyle}
+                />
+              )}
             </div>
           ) : null}
           {sourceSnapGuides.map((guide) => (
@@ -2835,12 +3260,12 @@ export function CardCanvas({
               </span>
               <div className={styles.emptyHeading}>
                 <span className={styles.emptyTitle}>
-                  {isMissingSource ? 'Source image missing' : 'Drop a screenshot'}
+                  {isMissingSource ? 'Source media missing' : 'Drop media'}
                 </span>
                 <span className={styles.emptySub}>
                   {isMissingSource
                     ? `${asset?.name ?? 'Saved source'} was not embedded in this project file.`
-                    : 'Start with an image to compose a social-ready card'}
+                    : 'Start with an image or video to compose a social-ready card'}
                 </span>
               </div>
             </div>
@@ -2849,8 +3274,8 @@ export function CardCanvas({
                 <span className={styles.emptyHintKey}>Drop</span>
                 <span>
                   {isMissingSource
-                    ? 'the original image anywhere to relink'
-                    : 'image anywhere on the workspace'}
+                    ? 'the original media anywhere to relink'
+                    : 'media anywhere on the workspace'}
                 </span>
               </li>
               <li>
@@ -2868,10 +3293,10 @@ export function CardCanvas({
                   onClick={isMissingSource ? onRelinkSource : onChooseSource}
                 >
                   <Icon name="image" size={14} />
-                  <span>{isMissingSource ? 'Relink image' : 'Choose image'}</span>
+                  <span>{isMissingSource ? 'Relink media' : 'Choose media'}</span>
                 </button>
                 <span className={styles.emptyHintAside}>
-                  PNG, JPG, WebP
+                  Images or video
                 </span>
               </li>
             </ol>

@@ -508,9 +508,18 @@
   display: block;
   max-width: none;
   max-height: none;
+  object-fit: fill;
   user-select: none;
   transform-origin: 0 0;
   will-change: transform;
+}
+
+.videoDecoder {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sourceSnapGuide {
@@ -589,9 +598,10 @@
 }
 
 .sourceToolButtonActive {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.13);
+  border-color: var(--control-active-border);
+  background: var(--control-active-bg);
   color: var(--color-text);
+  box-shadow: var(--control-active-shadow);
 }
 
 .sourceDoneButton {
@@ -616,35 +626,46 @@
   appearance: none;
   -webkit-appearance: none;
   width: 86px;
-  height: 24px;
+  height: 28px;
   margin: 0;
   background: transparent;
   cursor: pointer;
 }
 
 .sourceZoomControl input::-webkit-slider-runnable-track {
-  height: 4px;
+  height: 5px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.45);
+  background: var(--control-track);
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
 }
 
 .sourceZoomControl input::-moz-range-track {
-  height: 4px;
+  height: 5px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.45);
+  background: var(--control-track);
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
 }
 
 .sourceZoomControl input::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 7px;
-  height: 20px;
-  margin-top: -8px;
+  width: 8px;
+  height: 22px;
+  margin-top: -8.5px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-accent);
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      rgba(5, 5, 7, 0.34) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(180deg, #ffffff 0%, var(--control-fill-soft) 100%);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.65),
     0 0 0 1px rgba(0, 0, 0, 0.55),
@@ -652,11 +673,18 @@
 }
 
 .sourceZoomControl input::-moz-range-thumb {
-  width: 7px;
-  height: 20px;
+  width: 8px;
+  height: 22px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-accent);
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      rgba(5, 5, 7, 0.34) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(180deg, #ffffff 0%, var(--control-fill-soft) 100%);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.65),
     0 0 0 1px rgba(0, 0, 0, 0.55),
@@ -668,7 +696,7 @@
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.65),
     0 0 0 1px rgba(0, 0, 0, 0.55),
-    0 0 0 3px rgba(255, 255, 255, 0.12),
+    var(--control-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
@@ -677,8 +705,12 @@
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.65),
     0 0 0 1px rgba(0, 0, 0, 0.55),
-    0 0 0 3px rgba(255, 255, 255, 0.12),
+    var(--control-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.sourceZoomControl input:focus-visible {
+  outline: none;
 }
 
 .emptyOverlay {

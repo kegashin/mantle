@@ -18,11 +18,15 @@ import {
   resolveMantleRenderSize,
   validateMantleRenderBudget
 } from './renderMantleCard';
+import { isAnimatedBackgroundPresetId } from './backgrounds';
 import type { MantleSceneLayout } from './renderer/sceneLayout';
 import { resolveMantleSceneLayout } from './renderer/sceneLayout';
 import {
   drawMantleBackground,
+  drawMantleFrameScaffold,
+  drawMantleFrameStroke,
   drawMantleFrameSurface,
+  drawMantleSourceFrame,
   drawMantleText,
   type MantleFrameSurfaceRender
 } from './renderer/sceneRender';
@@ -52,6 +56,8 @@ export type MantlePreviewRenderResult = {
   width: number;
   height: number;
   contentRect: Rect;
+  contentRadius: number;
+  contentCornerStyle: 'all' | 'bottom' | 'none';
   frameRect: Rect;
   baseFrameRect: Rect;
   frameRotation: number;
@@ -256,11 +262,44 @@ function createBackgroundKey(
     backgroundAsset:
       input.card.background.presetId === 'image-fill'
         ? assetRenderKey(input.backgroundAsset)
-        : null
+        : null,
+    timeMs: isAnimatedBackgroundPresetId(input.card.background.presetId)
+      ? Math.round(input.timeMs ?? 0)
+      : 0
   });
 }
 
 function createBaseKey({
+  input,
+  backgroundKey,
+  layoutGeometryKey,
+  width,
+  height
+}: {
+  input: MantleRenderInput;
+  backgroundKey: string;
+  layoutGeometryKey: string;
+  width: number;
+  height: number;
+}): string {
+  const sourceAsset = assetRenderKey(input.asset);
+
+  return stableKey({
+    version: 1,
+    width,
+    height,
+    backgroundKey,
+    layoutGeometryKey,
+    frame: input.card.frame,
+    frameTransform: input.card.frameTransform ?? null,
+    sourcePlacement: sourceAsset ? input.card.sourcePlacement ?? null : null,
+    cardName: input.card.name,
+    sourceAsset,
+    showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
+  });
+}
+
+function createFrameScaffoldKey({
   input,
   backgroundKey,
   layoutGeometryKey,
@@ -281,10 +320,7 @@ function createBaseKey({
     layoutGeometryKey,
     frame: input.card.frame,
     frameTransform: input.card.frameTransform ?? null,
-    sourcePlacement: input.card.sourcePlacement ?? null,
-    cardName: input.card.name,
-    sourceAsset: assetRenderKey(input.asset),
-    showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
+    cardName: input.card.name
   });
 }
 
@@ -389,7 +425,8 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
             card: input.card,
             backgroundAsset: input.backgroundAsset,
             layout: cachedLayout.layout,
-            renderMode: input.renderMode ?? 'preview'
+            renderMode: input.renderMode ?? 'preview',
+            timeMs: input.timeMs ?? 0
           });
           backgroundLayer.key = backgroundKey;
         } finally {
@@ -404,26 +441,48 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         width,
         height
       });
-      if (baseLayer.key !== baseKey) {
+      const hasRuntimeSourceFrame =
+        input.asset?.mediaKind === 'video' && input.sourceFrame != null;
+      const frameScaffoldKey = hasRuntimeSourceFrame
+        ? createFrameScaffoldKey({
+            input,
+            backgroundKey,
+            layoutGeometryKey,
+            width,
+            height
+          })
+        : baseKey;
+
+      if (baseLayer.key !== frameScaffoldKey) {
         const baseCtx = getCanvas2D(baseLayer.canvas);
         baseCtx.save();
         try {
           baseCtx.clearRect(0, 0, width, height);
           baseCtx.drawImage(backgroundLayer.canvas, 0, 0);
-          cachedFrameSurface = await drawMantleFrameSurface({
-            ctx: baseCtx,
-            card: input.card,
-            asset: input.asset,
-            layout: cachedLayout.layout,
-            showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
-          });
-          baseLayer.key = baseKey;
+          cachedFrameSurface = hasRuntimeSourceFrame
+            ? drawMantleFrameScaffold({
+                ctx: baseCtx,
+                card: input.card,
+                layout: cachedLayout.layout
+              })
+            : await drawMantleFrameSurface({
+                ctx: baseCtx,
+                card: input.card,
+                asset: input.asset,
+                sourceFrame: input.sourceFrame,
+                layout: cachedLayout.layout,
+                showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
+              });
+          baseLayer.key = frameScaffoldKey;
         } finally {
           baseCtx.restore();
         }
       }
 
       const contentRect = cachedFrameSurface?.contentRect ?? cachedLayout.layout.imageRect;
+      const contentRadius =
+        cachedFrameSurface?.contentRadius ?? cachedLayout.layout.cornerRadius;
+      const contentCornerStyle = cachedFrameSurface?.contentCornerStyle ?? 'all';
       const frameRect = cachedFrameSurface?.frameRect ?? cachedLayout.layout.imageRect;
       const baseFrameRect =
         cachedFrameSurface?.baseFrameRect ?? cachedLayout.layout.baseImageRect;
@@ -437,6 +496,29 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
       try {
         outputCtx.clearRect(0, 0, width, height);
         outputCtx.drawImage(baseLayer.canvas, 0, 0);
+        if (hasRuntimeSourceFrame && input.sourceFrame) {
+          drawMantleSourceFrame({
+            ctx: outputCtx,
+            card: input.card,
+            sourceFrame: input.sourceFrame,
+            frameSurface: {
+              contentRect,
+              contentRadius,
+              contentCornerStyle
+            },
+            layout: cachedLayout.layout
+          });
+          drawMantleFrameStroke({
+            ctx: outputCtx,
+            card: input.card,
+            frameSurface: {
+              contentRect,
+              contentRadius,
+              contentCornerStyle
+            },
+            layout: cachedLayout.layout
+          });
+        }
         drawMantleText({
           ctx: outputCtx,
           layout: cachedLayout.layout,
@@ -451,6 +533,8 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         width,
         height,
         contentRect,
+        contentRadius,
+        contentCornerStyle,
         frameRect,
         baseFrameRect,
         frameRotation,

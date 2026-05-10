@@ -67,6 +67,7 @@ scope.onmessage = async (event) => {
       canvas,
       renderMode: 'preview',
       scale: request.scale,
+      timeMs: request.timeMs ?? 0,
       showEmptyPlaceholderText: request.showEmptyPlaceholderText,
       hiddenTextLayerIds: request.hiddenTextLayerIds
     });
@@ -87,6 +88,8 @@ scope.onmessage = async (event) => {
       width: canvas.width,
       height: canvas.height
     };
+    const contentRadius = rendered?.contentRadius ?? 0;
+    const contentCornerStyle = rendered?.contentCornerStyle ?? 'all';
     const frameRect = rendered?.frameRect ?? contentRect;
     const baseFrameRect = rendered?.baseFrameRect ?? frameRect;
 
@@ -98,6 +101,8 @@ scope.onmessage = async (event) => {
         width: canvas.width,
         height: canvas.height,
         contentRect,
+        contentRadius,
+        contentCornerStyle,
         frameRect,
         baseFrameRect,
         frameRotation: rendered?.frameRotation ?? 0,

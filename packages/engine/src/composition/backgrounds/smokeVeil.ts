@@ -17,6 +17,7 @@ const SMOKE_VEIL_FRAGMENT_SHADER = `
   uniform vec4 uParams;
   uniform float uSeed;
   uniform float uIntensity;
+  uniform float uTime;
 
   float rnd(vec2 p) {
     p = fract(p * vec2(12.9898, 78.233));
@@ -64,7 +65,7 @@ const SMOKE_VEIL_FRAGMENT_SHADER = `
     float details = clamp(uParams.x, 0.0, 1.0);
     float glow = clamp(uParams.y, 0.0, 1.0);
     float grain = clamp(uParams.z, 0.0, 1.0);
-    float time = 660.0 + uSeed * 96.0;
+    float time = 660.0 + uSeed * 96.0 + uTime;
 
     uv.x += 0.12 + sin(uSeed * 6.28318530718) * 0.04;
     uv *= vec2(1.34 + details * 0.22, 1.0);
@@ -202,7 +203,8 @@ async function drawShaderVersion({
   intensity,
   params,
   seed,
-  scale
+  scale,
+  timeMs
 }: BackgroundGeneratorInput): Promise<boolean> {
   const { drawShaderBackground } = await import('./shaderBackground');
   return drawShaderBackground({
@@ -219,7 +221,8 @@ async function drawShaderVersion({
     seed,
     intensity,
     scale,
-    shaderKey: 'smoke-veil-v4',
+    timeMs,
+    shaderKey: 'smoke-veil-v5',
     fragmentShader: SMOKE_VEIL_FRAGMENT_SHADER
   });
 }
@@ -232,6 +235,7 @@ export const smokeVeil: BackgroundGenerator = async ({
   params,
   seed,
   renderMode,
+  timeMs,
   scale
 }) => {
   if (
@@ -243,7 +247,8 @@ export const smokeVeil: BackgroundGenerator = async ({
       seed,
       intensity,
       renderMode,
-      scale
+      scale,
+      timeMs
     })
   ) {
     return;
@@ -254,6 +259,7 @@ export const smokeVeil: BackgroundGenerator = async ({
   const glow = readBackgroundParam(params, 'glow', intensity);
   const grain = readBackgroundParam(params, 'grain', 0.08);
   const preview = renderMode === 'preview';
+  const time = timeMs / 1000;
   const reach = Math.hypot(rect.width, rect.height);
   const accentRgb = parseHexToRgb(palette.accent);
 
@@ -289,7 +295,12 @@ export const smokeVeil: BackgroundGenerator = async ({
   const colors = [palette.foreground, palette.accent, palette.muted ?? palette.foreground];
   for (let i = 0; i < strokes; i += 1) {
     const normalized = i / Math.max(1, strokes - 1);
-    const y = rect.y + rect.height * (0.02 + normalized * 0.96) + (rng() - 0.5) * rect.height * 0.24;
+    const drift = time * (0.12 + i * 0.006) + i * 0.73;
+    const y =
+      rect.y +
+      rect.height * (0.02 + normalized * 0.96) +
+      (rng() - 0.5) * rect.height * 0.24 +
+      Math.sin(drift) * rect.height * 0.035;
     const color = colors[i % colors.length]!;
     const alpha = (0.024 + glow * 0.04) * (0.62 + rng() * 0.52);
     const width = Math.max(10, scale * (28 + details * 62) * (0.72 + rng() * 0.86));
@@ -303,7 +314,7 @@ export const smokeVeil: BackgroundGenerator = async ({
       alpha,
       lineWidth: width,
       blur,
-      phase: rng() * Math.PI * 2,
+      phase: rng() * Math.PI * 2 + time * (0.18 + i * 0.004),
       rng
     });
   }

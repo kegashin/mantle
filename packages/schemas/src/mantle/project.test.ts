@@ -54,6 +54,7 @@ describe('MantleProjectSchema', () => {
       role: 'screenshot',
       name: 'Home screen',
       mimeType: 'image/png',
+      mediaKind: 'image',
       width: 1440,
       height: 1000,
       fileSize: 820_000,
@@ -110,6 +111,29 @@ describe('MantleProjectSchema', () => {
         title: 'A cleaner way to frame product updates'
       }
     });
+  });
+
+  it('accepts video asset metadata for motion workflows', () => {
+    const project = createMantleProject();
+    const asset = {
+      id: 'asset-product-demo',
+      role: 'screenshot',
+      name: 'product-demo.mp4',
+      mimeType: 'video/mp4',
+      mediaKind: 'video',
+      width: 1280,
+      height: 720,
+      fileSize: 4_800_000,
+      durationMs: 12_400,
+      frameRate: 30
+    } satisfies MantleAsset;
+
+    const parsed = MantleProjectSchema.parse({
+      ...project,
+      assets: [asset]
+    });
+
+    expect(parsed.assets[0]).toEqual(asset);
   });
 
   it('rejects embedded asset data urls', () => {
@@ -537,6 +561,54 @@ describe('MantleProjectSchema', () => {
     expect(parsed.frame.shadowStrength).toBe(4);
     expect(parsed.frame.shadowSoftness).toBe(4);
     expect(parsed.frame.shadowDistance).toBe(4);
+  });
+
+  it('accepts gif export settings', () => {
+    const card = createMantleCard();
+
+    const parsed = MantleCardSchema.parse({
+      ...card,
+      export: {
+        ...card.export,
+        format: 'gif',
+        gifDurationMs: 4200,
+        gifLoop: true,
+        gifLoopCount: 3
+      }
+    });
+
+    expect(parsed.export.format).toBe('gif');
+    expect(parsed.export.gifDurationMs).toBe(4200);
+    expect(parsed.export.gifLoop).toBe(true);
+    expect(parsed.export.gifLoopCount).toBe(3);
+  });
+
+  it('accepts webm export settings', () => {
+    const card = createMantleCard();
+
+    const parsed = MantleCardSchema.parse({
+      ...card,
+      export: {
+        ...card.export,
+        format: 'webm',
+        videoStartMs: 1200,
+        videoEndMs: 5400,
+        videoLoop: true,
+        videoDurationMs: 4200,
+        videoFrameRate: 24,
+        videoBitrateMbps: 8,
+        animateBackground: false
+      }
+    });
+
+    expect(parsed.export.format).toBe('webm');
+    expect(parsed.export.videoStartMs).toBe(1200);
+    expect(parsed.export.videoEndMs).toBe(5400);
+    expect(parsed.export.videoLoop).toBe(true);
+    expect(parsed.export.videoDurationMs).toBe(4200);
+    expect(parsed.export.videoFrameRate).toBe(24);
+    expect(parsed.export.videoBitrateMbps).toBe(8);
+    expect(parsed.export.animateBackground).toBe(false);
   });
 
   it('rejects gradient color lists outside the supported bounds', () => {

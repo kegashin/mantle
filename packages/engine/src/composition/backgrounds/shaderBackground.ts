@@ -34,6 +34,7 @@ type ShaderBackgroundUniforms = Record<string, IUniform> & {
   uSeed: IUniform<number>;
   uIntensity: IUniform<number>;
   uScale: IUniform<number>;
+  uTime: IUniform<number>;
 };
 
 type ShaderBackgroundMaterial = ShaderMaterial & {
@@ -50,6 +51,7 @@ type ShaderBackgroundInput = {
   seed: string;
   intensity: number;
   scale: number;
+  timeMs: number;
   fragmentShader: string;
   shaderKey: string;
 };
@@ -191,6 +193,7 @@ class ThreeShaderBackgroundRenderer {
     uniforms.uSeed.value = seed;
     uniforms.uIntensity.value = Math.min(1, Math.max(0, input.intensity));
     uniforms.uScale.value = Math.max(0.01, input.scale);
+    uniforms.uTime.value = Math.max(0, input.timeMs) / 1000;
   }
 
   private createMaterial(
@@ -209,7 +212,8 @@ class ThreeShaderBackgroundRenderer {
       uColorCount: { value: 4 },
       uSeed: { value: 0 },
       uIntensity: { value: 1 },
-      uScale: { value: 1 }
+      uScale: { value: 1 },
+      uTime: { value: 0 }
     };
 
     return Object.assign(

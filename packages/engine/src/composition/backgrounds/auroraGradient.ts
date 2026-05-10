@@ -187,11 +187,13 @@ export const auroraGradient: BackgroundGenerator = ({
   params,
   seed,
   renderMode,
+  timeMs,
   scale
 }) => {
   const rng = createRng(`aurora-gradient::${seed}`);
   const light = isLightPalette(palette);
   const preview = renderMode === 'preview';
+  const time = timeMs / 1000;
   const glow = readBackgroundParam(params, 'glow', 0.62, 4);
   const spread = readBackgroundParam(params, 'spread', 0.7, 3);
   const grain = readBackgroundParam(params, 'grain', 0.06);
@@ -221,21 +223,28 @@ export const auroraGradient: BackgroundGenerator = ({
     const anchor = anchors[index % anchors.length]!;
     const weight = colorVisibilityWeight(color, averageLuminance, light);
     const presetTurn = index * 2.399963229728653 + angle * 0.18;
+    const driftTurn = time * (0.18 + index * 0.013) + index * 1.91 + angle;
     const jitterX = (rng() - 0.5) * rect.width * (0.07 + spread * 0.04);
     const jitterY = (rng() - 0.5) * rect.height * (0.07 + spread * 0.04);
     const x =
       rect.x +
       rect.width * anchor.x +
       Math.cos(presetTurn) * rect.width * 0.035 +
-      jitterX;
+      jitterX +
+      Math.sin(driftTurn) * rect.width * (0.018 + spread * 0.006);
     const y =
       rect.y +
       rect.height * anchor.y +
       Math.sin(presetTurn * 0.83) * rect.height * 0.035 +
-      jitterY;
+      jitterY +
+      Math.cos(driftTurn * 0.79) * rect.height * (0.018 + spread * 0.006);
     const radiusX = longSide * (0.28 + spread * 0.3);
     const radiusY = shortSide * (0.23 + spread * 0.25);
-    const rotation = angle * 0.2 + anchor.rotation + (rng() - 0.5) * 0.34;
+    const rotation =
+      angle * 0.2 +
+      anchor.rotation +
+      (rng() - 0.5) * 0.34 +
+      Math.sin(driftTurn * 0.64) * 0.08;
     const alpha = (light ? 0.16 : 0.26) * strength * (0.54 + glow * 0.52) * weight;
 
     addEllipticGlow({

@@ -3,10 +3,18 @@ import type { MantleCard } from '@mantle/schemas/model';
 import { resolveBackgroundGenerator } from '../backgrounds';
 import type { MantleCanvasRenderingContext2D } from '../canvas';
 import type { MantleRenderMode } from '../types';
-import { getAssetSource, type MantleRenderableAsset } from './assets';
+import {
+  getAssetSource,
+  type MantleRenderableAsset,
+  type MantleRuntimeFrameSource
+} from './assets';
 import {
   drawEmptyScreenshotPlaceholder,
-  drawImageWithShadowedFrame
+  drawFrameContentStroke,
+  drawFrameSurfaceScaffold,
+  drawImageWithShadowedFrame,
+  drawSourceIntoFrameContent,
+  type FrameContentSurface
 } from './frameSurface';
 import { withLoadedImage, type LoadedMantleImage } from './imageCache';
 import type { MantleSceneLayout } from './sceneLayout';
@@ -14,10 +22,26 @@ import { drawTextBlock } from './text';
 
 export type MantleFrameSurfaceRender = {
   contentRect: MantleSceneLayout['canvasRect'];
+  contentRadius: number;
+  contentCornerStyle: 'all' | 'bottom' | 'none';
   frameRect: MantleSceneLayout['canvasRect'];
   baseFrameRect: MantleSceneLayout['canvasRect'];
   frameRotation: number;
 };
+
+function toFrameSurfaceRender(
+  surface: FrameContentSurface,
+  layout: MantleSceneLayout
+): MantleFrameSurfaceRender {
+  return {
+    contentRect: surface.contentRect,
+    contentRadius: surface.contentRadius,
+    contentCornerStyle: surface.contentCornerStyle,
+    frameRect: layout.imageRect,
+    baseFrameRect: layout.baseImageRect,
+    frameRotation: layout.frameRotation
+  };
+}
 
 function imageDimension(
   image: LoadedMantleImage,
@@ -77,13 +101,15 @@ export async function drawMantleBackground({
   card,
   backgroundAsset,
   layout,
-  renderMode
+  renderMode,
+  timeMs = 0
 }: {
   ctx: MantleCanvasRenderingContext2D;
   card: MantleCard;
   backgroundAsset?: MantleRenderableAsset | undefined;
   layout: MantleSceneLayout;
   renderMode: MantleRenderMode;
+  timeMs?: number | undefined;
 }): Promise<void> {
   const palette = layout.palette;
 
@@ -100,12 +126,16 @@ export async function drawMantleBackground({
     params: card.background.params ?? {},
     seed: card.background.seed,
     renderMode,
+    timeMs,
     scale: layout.drawScale
   });
 
   if (card.background.presetId === 'image-fill') {
     const source = getAssetSource(backgroundAsset);
     if (!source) throw new Error('Could not load background image asset.');
+    if (backgroundAsset?.mediaKind === 'video') {
+      throw new Error('Video backdrops are unavailable in the static renderer.');
+    }
     await withLoadedImage(source, (image) => {
       drawCoverImage(ctx, image, layout.canvasRect);
     });
@@ -116,21 +146,98 @@ export async function drawMantleFrameSurface({
   ctx,
   card,
   asset,
+  sourceFrame,
   layout,
   showEmptyPlaceholderText
 }: {
   ctx: MantleCanvasRenderingContext2D;
   card: MantleCard;
   asset?: MantleRenderableAsset | undefined;
+  sourceFrame?: MantleRuntimeFrameSource | undefined;
   layout: MantleSceneLayout;
   showEmptyPlaceholderText: boolean;
 }): Promise<MantleFrameSurfaceRender> {
   const assetSource = getAssetSource(asset);
 
   if (assetSource) {
-    let contentRect: MantleFrameSurfaceRender['contentRect'] | undefined;
+    if (asset?.mediaKind === 'video') {
+      if (!sourceFrame) {
+        const contentSurface = withFrameRotation(ctx, layout, () =>
+          drawEmptyScreenshotPlaceholder(
+            ctx,
+            layout.imageRect,
+            layout.cornerRadius,
+            layout.contentPadding,
+            card,
+            layout.palette,
+            layout.canvasRect.width,
+            false
+          )
+        );
+
+        return {
+          contentRect: contentSurface.contentRect,
+          contentRadius: contentSurface.contentRadius,
+          contentCornerStyle: contentSurface.contentCornerStyle,
+          frameRect: layout.imageRect,
+          baseFrameRect: layout.baseImageRect,
+          frameRotation: layout.frameRotation
+        };
+      }
+
+      let contentSurface:
+        | Pick<
+            MantleFrameSurfaceRender,
+            'contentRect' | 'contentRadius' | 'contentCornerStyle'
+          >
+        | undefined;
+      withFrameRotation(ctx, layout, () => {
+        contentSurface = drawFrameSurfaceScaffold(
+          ctx,
+          layout.imageRect,
+          layout.cornerRadius,
+          layout.contentPadding,
+          card,
+          layout.palette,
+          layout.canvasRect.width
+        );
+        drawSourceIntoFrameContent(
+          ctx,
+          {
+            source: sourceFrame.source,
+            width: sourceFrame.width,
+            height: sourceFrame.height
+          },
+          contentSurface,
+          card
+        );
+        drawFrameContentStroke(
+          ctx,
+          contentSurface,
+          card,
+          layout.palette,
+          layout.canvasRect.width
+        );
+      });
+
+      return {
+        contentRect: contentSurface?.contentRect ?? layout.imageRect,
+        contentRadius: contentSurface?.contentRadius ?? layout.cornerRadius,
+        contentCornerStyle: contentSurface?.contentCornerStyle ?? 'all',
+        frameRect: layout.imageRect,
+        baseFrameRect: layout.baseImageRect,
+        frameRotation: layout.frameRotation
+      };
+    }
+
+    let contentSurface:
+      | Pick<
+          MantleFrameSurfaceRender,
+          'contentRect' | 'contentRadius' | 'contentCornerStyle'
+        >
+      | undefined;
     await withLoadedImage(assetSource, (image) => {
-      contentRect = withFrameRotation(ctx, layout, () =>
+      contentSurface = withFrameRotation(ctx, layout, () =>
         drawImageWithShadowedFrame(
           ctx,
           image,
@@ -144,30 +251,114 @@ export async function drawMantleFrameSurface({
       );
     });
     return {
-      contentRect: contentRect ?? layout.imageRect,
+      contentRect: contentSurface?.contentRect ?? layout.imageRect,
+      contentRadius: contentSurface?.contentRadius ?? layout.cornerRadius,
+      contentCornerStyle: contentSurface?.contentCornerStyle ?? 'all',
       frameRect: layout.imageRect,
       baseFrameRect: layout.baseImageRect,
       frameRotation: layout.frameRotation
     };
   }
 
+  const contentSurface = withFrameRotation(ctx, layout, () =>
+    drawEmptyScreenshotPlaceholder(
+      ctx,
+      layout.imageRect,
+      layout.cornerRadius,
+      layout.contentPadding,
+      card,
+      layout.palette,
+      layout.canvasRect.width,
+      showEmptyPlaceholderText
+    )
+  );
+
   return {
-    contentRect: withFrameRotation(ctx, layout, () =>
-      drawEmptyScreenshotPlaceholder(
-        ctx,
-        layout.imageRect,
-        layout.cornerRadius,
-        layout.contentPadding,
-        card,
-        layout.palette,
-        layout.canvasRect.width,
-        showEmptyPlaceholderText
-      )
-    ),
+    contentRect: contentSurface.contentRect,
+    contentRadius: contentSurface.contentRadius,
+    contentCornerStyle: contentSurface.contentCornerStyle,
     frameRect: layout.imageRect,
     baseFrameRect: layout.baseImageRect,
     frameRotation: layout.frameRotation
   };
+}
+
+export function drawMantleFrameScaffold({
+  ctx,
+  card,
+  layout
+}: {
+  ctx: MantleCanvasRenderingContext2D;
+  card: MantleCard;
+  layout: MantleSceneLayout;
+}): MantleFrameSurfaceRender {
+  const surface = withFrameRotation(ctx, layout, () =>
+    drawFrameSurfaceScaffold(
+      ctx,
+      layout.imageRect,
+      layout.cornerRadius,
+      layout.contentPadding,
+      card,
+      layout.palette,
+      layout.canvasRect.width
+    )
+  );
+  return toFrameSurfaceRender(surface, layout);
+}
+
+export function drawMantleSourceFrame({
+  ctx,
+  card,
+  sourceFrame,
+  frameSurface,
+  layout
+}: {
+  ctx: MantleCanvasRenderingContext2D;
+  card: MantleCard;
+  sourceFrame: MantleRuntimeFrameSource;
+  frameSurface: Pick<
+    MantleFrameSurfaceRender,
+    'contentRect' | 'contentRadius' | 'contentCornerStyle'
+  >;
+  layout: MantleSceneLayout;
+}): void {
+  withFrameRotation(ctx, layout, () => {
+    drawSourceIntoFrameContent(
+      ctx,
+      {
+        source: sourceFrame.source,
+        width: sourceFrame.width,
+        height: sourceFrame.height
+      },
+      frameSurface,
+      card
+    );
+  });
+}
+
+export function drawMantleFrameStroke({
+  ctx,
+  card,
+  frameSurface,
+  layout
+}: {
+  ctx: MantleCanvasRenderingContext2D;
+  card: MantleCard;
+  frameSurface: Pick<
+    MantleFrameSurfaceRender,
+    'contentRect' | 'contentRadius' | 'contentCornerStyle'
+  >;
+  layout: MantleSceneLayout;
+}): void {
+  withFrameRotation(ctx, layout, () => {
+    drawFrameContentStroke(
+      ctx,
+      frameSurface,
+      card,
+      layout.palette,
+      layout.canvasRect.width
+    );
+  });
 }
 
 export function drawMantleText({

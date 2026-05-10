@@ -202,7 +202,8 @@ async function drawShaderVersion({
   intensity,
   params,
   seed,
-  scale
+  scale,
+  timeMs
 }: BackgroundGeneratorInput): Promise<boolean> {
   const { drawShaderBackground } = await import('./shaderBackground');
   return drawShaderBackground({
@@ -219,6 +220,7 @@ async function drawShaderVersion({
     seed,
     intensity,
     scale,
+    timeMs,
     shaderKey: 'signal-field-v2',
     fragmentShader: SIGNAL_FIELD_FRAGMENT_SHADER
   });
@@ -232,6 +234,7 @@ export const signalField: BackgroundGenerator = async ({
   params,
   seed,
   renderMode,
+  timeMs,
   scale
 }) => {
   if (
@@ -244,6 +247,7 @@ export const signalField: BackgroundGenerator = async ({
       intensity,
       renderMode,
       scale,
+      timeMs
     })
   ) {
     return;

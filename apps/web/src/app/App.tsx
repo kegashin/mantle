@@ -1,5 +1,8 @@
 import { exportMantleProjectCard } from '@mantle/engine/commands';
-import { resolveFrameBoxStyle } from '@mantle/engine/catalog';
+import {
+  isAnimatedBackgroundPresetId,
+  resolveFrameBoxStyle
+} from '@mantle/engine/catalog';
 import {
   type MantleBackground,
   type MantleCard,
@@ -22,15 +25,35 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode
 } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Icon } from '../components/Icon';
 import { InspectorPanel } from '../features/inspector/InspectorPanel';
-import { CardCanvas } from '../features/stage/CardCanvas';
+import {
+  CardCanvas,
+  type VideoPlaybackCommand,
+  type VideoPlaybackCommandInput,
+  type VideoPlaybackState
+} from '../features/stage/CardCanvas';
 import { syncGradientColorsWithPalette } from '../lib/backgroundColors';
 import { downloadBlob } from '../lib/downloadBlob';
+import {
+  createMantleGifExportPlan,
+  exportMantleGif,
+  type MantleGifExportProgress
+} from '../lib/exportGif';
+import {
+  createMantleWebMExportPlan,
+  exportMantleWebM,
+  isMantleWebMSupported,
+  type MantleWebMExportProgress
+} from '../lib/exportWebM';
+import { formatMediaDuration, formatPlaybackTime } from '../lib/formatMedia';
 import {
   resolveFrameContentPaddingForBoxStyle,
   resolveGlassFrameMaterial
@@ -41,10 +64,12 @@ import {
 } from './projectPersistence';
 import {
   createAssetFromFile,
+  createVideoAssetFromFile,
   fileBaseName,
   formatBytes,
   hasRenderableAssetSource,
   readImageDimensions,
+  readVideoMetadata,
   revokeRuntimeObjectUrl
 } from './runtimeAssets';
 import {
@@ -79,14 +104,22 @@ import {
   type UserStylePreset
 } from './userPresets';
 
-const ACCEPTED_INPUT = 'image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp';
-const SUPPORTED_INPUT_MIME_TYPES = new Set([
+const ACCEPTED_INPUT =
+  'image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.mp4,.mov,.webm';
+const SUPPORTED_IMAGE_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
   'image/webp'
 ]);
-const SUPPORTED_INPUT_EXTENSION_PATTERN = /\.(png|jpe?g|webp)$/i;
-const SUPPORTED_INPUT_FORMAT_HINT = 'PNG, JPG, or WebP';
+const SUPPORTED_VIDEO_MIME_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime'
+]);
+const SUPPORTED_IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|webp)$/i;
+const SUPPORTED_VIDEO_EXTENSION_PATTERN = /\.(mp4|mov|webm)$/i;
+const SUPPORTED_IMAGE_FORMAT_HINT = 'PNG, JPG, or WebP';
+const SUPPORTED_MEDIA_FORMAT_HINT = 'PNG, JPG, WebP, MP4, MOV, or WebM';
 const DEFAULT_PROJECT_NAME = 'Mantle Draft';
 const PROJECT_HISTORY_LIMIT = 80;
 const PROJECT_HISTORY_MERGE_WINDOW_MS = 650;
@@ -106,7 +139,28 @@ type AppFailure = Readonly<{
 
 type ExportSettingsMode = 'copy' | 'download';
 type ExportSliderFillStyle = CSSProperties & Record<'--export-slider-fill', string>;
+type StageTimelineStyle = CSSProperties &
+  Record<
+    | '--stage-timeline-clip-start'
+    | '--stage-timeline-clip-end'
+    | '--stage-timeline-playhead',
+    string
+  >;
+type StageTimelineTick = {
+  id: string;
+  position: number;
+  label: string;
+};
+type StageTimelineDragMode = 'scrub' | 'trim-start' | 'trim-end';
+type StageTimelineDragState = {
+  mode: StageTimelineDragMode;
+  pointerId: number;
+};
+type CompositionMode = 'still' | 'motion';
 type PresetRailMode = 'built-in' | 'saved';
+type ExportProgressState = (MantleWebMExportProgress | MantleGifExportProgress) & {
+  canCancel: boolean;
+};
 type ProjectUpdater =
   | RuntimeMantleProject
   | ((current: RuntimeMantleProject) => RuntimeMantleProject);
@@ -140,7 +194,7 @@ type StyleRailItem =
       kind: 'image';
     };
 
-type ImageImportIntent =
+type MediaImportIntent =
   | { mode: 'auto' }
   | { mode: 'source-new' }
   | { mode: 'source-relink'; assetId: string }
@@ -200,11 +254,32 @@ function canWriteClipboardImage(): boolean {
   return 'ClipboardItem' in window && Boolean(navigator.clipboard?.write);
 }
 
-const EXPORT_FORMAT_OPTIONS: Array<{ value: MantleExportFormat; label: string }> = [
+const STILL_EXPORT_FORMAT_OPTIONS: Array<{ value: MantleExportFormat; label: string }> = [
   { value: 'png', label: 'PNG' },
   { value: 'jpeg', label: 'JPEG' },
-  { value: 'webp', label: 'WebP' }
+  { value: 'webp', label: 'WebP' },
+  { value: 'gif', label: 'GIF' }
 ];
+const MOTION_EXPORT_FORMAT_OPTIONS: Array<{ value: MantleExportFormat; label: string }> = [
+  { value: 'webm', label: 'WebM' },
+  { value: 'gif', label: 'GIF' }
+];
+const DEFAULT_GIF_DURATION_MS = 3000;
+const DEFAULT_GIF_FRAME_RATE = 12;
+const DEFAULT_VIDEO_DURATION_MS = 3000;
+const DEFAULT_VIDEO_FRAME_RATE = 24;
+const DEFAULT_VIDEO_BITRATE_MBPS = 8;
+const MIN_VIDEO_TRIM_DURATION_MS = 100;
+const VIDEO_EXPORT_MAX_DURATION_MS = 60000;
+const VIDEO_TRIM_STEP_MS = 100;
+
+function exportFormatForComposition(
+  format: MantleExportFormat,
+  mode: CompositionMode
+): MantleExportFormat {
+  if (mode === 'motion') return format === 'gif' ? 'gif' : 'webm';
+  return format === 'webm' ? 'png' : format;
+}
 
 function decimalPlaces(value: number): number {
   const text = String(value);
@@ -214,6 +289,49 @@ function decimalPlaces(value: number): number {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function resolveVideoTrimRange(
+  card: MantleCard,
+  sourceDurationMs: number
+): { startMs: number; endMs: number; durationMs: number } {
+  const maxEnd = Math.max(
+    MIN_VIDEO_TRIM_DURATION_MS,
+    Math.min(
+      VIDEO_EXPORT_MAX_DURATION_MS,
+      sourceDurationMs || VIDEO_EXPORT_MAX_DURATION_MS
+    )
+  );
+  const startMs = clampNumber(
+    card.export.videoStartMs ?? 0,
+    0,
+    maxEnd - MIN_VIDEO_TRIM_DURATION_MS
+  );
+  const endMs = clampNumber(
+    card.export.videoEndMs ?? maxEnd,
+    startMs + MIN_VIDEO_TRIM_DURATION_MS,
+    maxEnd
+  );
+  return { startMs, endMs, durationMs: endMs - startMs };
+}
+
+function progressPercent(progress: number): string {
+  return `${Math.round(clampNumber(progress, 0, 1) * 100)}%`;
+}
+
+function createTimelineTicks(durationMs: number): StageTimelineTick[] {
+  const duration = Math.max(100, durationMs);
+  const idealTicks = Math.min(12, Math.max(5, Math.round(duration / 2000) + 1));
+  const lastIndex = idealTicks - 1;
+
+  return Array.from({ length: idealTicks }, (_, index) => {
+    const position = lastIndex > 0 ? index / lastIndex : 0;
+    return {
+      id: `${index}-${Math.round(position * duration)}`,
+      position: position * 100,
+      label: formatPlaybackTime(position * duration)
+    };
+  });
 }
 
 function snapNumericValue(value: number, min: number, max: number, step: number): number {
@@ -315,6 +433,26 @@ function ExportSlider({
   );
 }
 
+function ExportSection({
+  title,
+  meta,
+  children
+}: {
+  title: string;
+  meta?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <section className={styles.exportSection}>
+      <div className={styles.exportSectionHeader}>
+        <span>{title}</span>
+        {meta ? <span>{meta}</span> : null}
+      </div>
+      <div className={styles.exportSectionBody}>{children}</div>
+    </section>
+  );
+}
+
 function isMissingRenderableSource(
   card: MantleCard,
   asset: RuntimeMantleProject['assets'][number] | undefined
@@ -332,9 +470,27 @@ function isMissingRenderableBackground(
 function isSupportedSourceImage(file: File): boolean {
   const mimeType = file.type.toLowerCase();
   return (
-    SUPPORTED_INPUT_MIME_TYPES.has(mimeType) ||
-    (mimeType === '' && SUPPORTED_INPUT_EXTENSION_PATTERN.test(file.name))
+    SUPPORTED_IMAGE_MIME_TYPES.has(mimeType) ||
+    (mimeType === '' && SUPPORTED_IMAGE_EXTENSION_PATTERN.test(file.name))
   );
+}
+
+function isSupportedSourceVideo(file: File): boolean {
+  const mimeType = file.type.toLowerCase();
+  return (
+    SUPPORTED_VIDEO_MIME_TYPES.has(mimeType) ||
+    (mimeType === '' && SUPPORTED_VIDEO_EXTENSION_PATTERN.test(file.name))
+  );
+}
+
+function isSupportedSourceMedia(file: File): boolean {
+  return isSupportedSourceImage(file) || isSupportedSourceVideo(file);
+}
+
+function mediaKindForFile(file: File): 'image' | 'video' | undefined {
+  if (isSupportedSourceImage(file)) return 'image';
+  if (isSupportedSourceVideo(file)) return 'video';
+  return undefined;
 }
 
 function isUserPresetFile(file: File): boolean {
@@ -387,19 +543,42 @@ function stylePresetDraftName(styleName: string): string {
 
 function importFailureNotice(
   file: File,
-  error?: AppFailure | undefined
+  error?: AppFailure | undefined,
+  destination: 'source' | 'background' = 'source'
 ): Omit<AppNotice, 'id'> {
-  if (!isSupportedSourceImage(file)) {
+  if (destination === 'background' && !isSupportedSourceImage(file)) {
     return {
       tone: 'error',
-      title: 'Unsupported file',
-      detail: `Import a static ${SUPPORTED_INPUT_FORMAT_HINT} image.`
+      title: 'Backdrop needs an image',
+      detail: `Use a static ${SUPPORTED_IMAGE_FORMAT_HINT} image as the backdrop.`
+    };
+  }
+
+  if (destination === 'source' && !isSupportedSourceMedia(file)) {
+    if (
+      file.type.toLowerCase().startsWith('video/') ||
+      SUPPORTED_VIDEO_EXTENSION_PATTERN.test(file.name)
+    ) {
+      return {
+        tone: 'warning',
+        title: 'Unsupported video',
+        detail: `Import ${SUPPORTED_MEDIA_FORMAT_HINT}.`
+      };
+    }
+
+    return {
+      tone: 'error',
+      title: 'Unsupported media',
+      detail: `Import ${SUPPORTED_MEDIA_FORMAT_HINT}.`
     };
   }
 
   return {
     tone: 'error',
-    title: 'Image could not be imported',
+    title:
+      mediaKindForFile(file) === 'video'
+        ? 'Video could not be imported'
+        : 'Image could not be imported',
     detail: error ? errorDetail(error) : 'Unknown error.'
   };
 }
@@ -407,11 +586,11 @@ function importFailureNotice(
 function relinkMissingAssetNotice(kind: 'source' | 'background'): Omit<AppNotice, 'id'> {
   return {
     tone: 'warning',
-    title: kind === 'background' ? 'Reimport backdrop image' : 'Reimport source image',
+    title: kind === 'background' ? 'Reimport backdrop image' : 'Reimport source media',
     detail:
       kind === 'background'
         ? 'Saved projects keep image metadata only. Relink the local backdrop image before exporting.'
-        : 'Saved projects keep image metadata only. Relink the local screenshot to render or export this card.'
+        : 'Saved projects keep source metadata only. Relink the local file to render or export this card.'
   };
 }
 
@@ -421,6 +600,14 @@ function exportFailureNotice(
   copyToClipboard: boolean
 ): Omit<AppNotice, 'id'> {
   const detail = errorDetail(error);
+
+  if (/abort|cancel/i.test(detail)) {
+    return {
+      tone: 'info',
+      title: 'Export canceled',
+      detail: 'The current export was stopped.'
+    };
+  }
 
   if (copyToClipboard && /clipboard|permission|denied|not allowed/i.test(detail)) {
     return {
@@ -434,11 +621,14 @@ function exportFailureNotice(
     return {
       tone: 'error',
       title: `${format.toUpperCase()} unsupported`,
-      detail: 'Choose PNG or JPEG for this browser.'
+      detail:
+        format === 'webm'
+          ? 'Use a browser with MediaRecorder WebM support, or choose PNG/GIF for a still export.'
+          : 'Choose PNG, JPEG, WebP, or GIF for this browser.'
     };
   }
 
-  if (/too large|working canvas memory|lower export scale|keep exports under/i.test(detail)) {
+  if (/too large|too long|working canvas memory|lower export scale|keep exports under|lower fps|trim the clip/i.test(detail)) {
     return {
       tone: 'error',
       title: 'Export too large',
@@ -449,8 +639,8 @@ function exportFailureNotice(
   if (/could not load image asset|image decoding|could not decode image/i.test(detail)) {
     return {
       tone: 'warning',
-      title: 'Reimport source image',
-      detail: 'Saved projects keep image metadata only. Relink the local screenshot before exporting.'
+      title: 'Reimport source media',
+      detail: 'Saved projects keep source metadata only. Relink the local file before exporting.'
     };
   }
 
@@ -478,6 +668,12 @@ export function App() {
   const canRedo = projectHistory.future.length > 0;
   const [isDragging, setIsDragging] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgressState | null>(null);
+  const [compositionMode, setCompositionMode] = useState<CompositionMode>('still');
+  const [videoPlaybackState, setVideoPlaybackState] =
+    useState<VideoPlaybackState | null>(null);
+  const [videoPlaybackCommand, setVideoPlaybackCommand] =
+    useState<VideoPlaybackCommand | undefined>(undefined);
   const [presetRailMode, setPresetRailMode] = useState<PresetRailMode>('built-in');
   const [userPresets, setUserPresets] = useState<UserStylePreset[]>([]);
   const [presetDraftOpen, setPresetDraftOpen] = useState(false);
@@ -500,7 +696,12 @@ export function App() {
   const exportPopoverRef = useRef<HTMLDivElement | null>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const noticeTimerRef = useRef<number | null>(null);
-  const imageImportIntentRef = useRef<ImageImportIntent>({ mode: 'auto' });
+  const mediaImportIntentRef = useRef<MediaImportIntent>({ mode: 'auto' });
+  const videoCommandSeqRef = useRef(0);
+  const stageTimelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const stageTimelineDragRef = useRef<StageTimelineDragState | null>(null);
+  const lastStageTimelineTimeRef = useRef<number | null>(null);
+  const exportAbortControllerRef = useRef<AbortController | null>(null);
 
   const setProject = useCallback((updater: ProjectUpdater) => {
     setProjectHistory((history) => {
@@ -597,6 +798,7 @@ export function App() {
   useEffect(() => {
     return () => {
       clearNoticeTimer();
+      exportAbortControllerRef.current?.abort();
       objectUrlsRef.current.forEach((url) => {
         revokeRuntimeObjectUrl(url);
       });
@@ -787,43 +989,112 @@ export function App() {
       ? activeCard.background.imageAssetId
       : undefined;
   const activeSourceMissing = activeMissingSourceAssetId != null;
+  const activeVideoAsset = activeAsset?.mediaKind === 'video' ? activeAsset : undefined;
+  const effectiveCompositionMode: CompositionMode = activeVideoAsset
+    ? 'motion'
+    : compositionMode;
+  const activeVideoDurationMs =
+    videoPlaybackState?.durationMs || activeVideoAsset?.durationMs || 0;
+  const backgroundAnimationAvailable = activeCard
+    ? isAnimatedBackgroundPresetId(activeCard.background.presetId)
+    : false;
+  const backgroundAnimationEnabled = activeCard?.export.animateBackground ?? true;
 
-  const openExportSettings = useCallback((mode: ExportSettingsMode) => {
-    setExportSettingsMode(mode);
-    setExportSettingsOpen(true);
-  }, []);
+  useEffect(() => {
+    if (!activeVideoAsset) {
+      setVideoPlaybackState(null);
+      setVideoPlaybackCommand(undefined);
+      videoCommandSeqRef.current = 0;
+      return;
+    }
 
-  const openImagePicker = useCallback((intent: ImageImportIntent = { mode: 'auto' }) => {
-    imageImportIntentRef.current = intent;
+    setVideoPlaybackState({
+      currentTimeMs: 0,
+      durationMs: activeVideoAsset.durationMs ?? 0,
+      paused: true,
+      muted: false
+    });
+    setVideoPlaybackCommand(undefined);
+    videoCommandSeqRef.current = 0;
+  }, [activeVideoAsset?.id, activeVideoAsset?.durationMs]);
+
+  const sendVideoPlaybackCommand = useCallback(
+    (command: VideoPlaybackCommandInput) => {
+      const id = videoCommandSeqRef.current + 1;
+      videoCommandSeqRef.current = id;
+      const nextCommand: VideoPlaybackCommand =
+        command.type === 'seek'
+          ? { id, type: 'seek', timeMs: command.timeMs }
+          : { id, type: command.type };
+      setVideoPlaybackCommand(nextCommand);
+    },
+    []
+  );
+
+  const updateCompositionMode = useCallback(
+    (mode: CompositionMode) => {
+      if (mode === 'still' && activeVideoAsset) {
+        showNotice({
+          tone: 'info',
+          title: 'Video uses Motion',
+          detail: 'Replace the source with an image to switch back to Still.'
+        });
+        return;
+      }
+
+      setCompositionMode(mode);
+    },
+    [activeVideoAsset, showNotice]
+  );
+
+  const openExportSettings = useCallback(
+    (mode: ExportSettingsMode) => {
+      if (mode === 'copy' && effectiveCompositionMode === 'motion') {
+        showNotice({
+          tone: 'info',
+          title: 'Use video export',
+          detail: 'Motion scenes export as WebM. Switch to Still to copy a PNG frame.'
+        });
+        return;
+      }
+
+      setExportSettingsMode(mode);
+      setExportSettingsOpen(true);
+    },
+    [effectiveCompositionMode, showNotice]
+  );
+
+  const openMediaPicker = useCallback((intent: MediaImportIntent = { mode: 'auto' }) => {
+    mediaImportIntentRef.current = intent;
     fileInputRef.current?.click();
   }, []);
 
   const openRelinkSourcePicker = useCallback(() => {
     if (!activeMissingSourceAssetId) {
-      openImagePicker({ mode: 'source-new' });
+      openMediaPicker({ mode: 'source-new' });
       return;
     }
 
-    openImagePicker({
+    openMediaPicker({
       mode: 'source-relink',
       assetId: activeMissingSourceAssetId
     });
-  }, [activeMissingSourceAssetId, openImagePicker]);
+  }, [activeMissingSourceAssetId, openMediaPicker]);
 
   const openRelinkBackgroundPicker = useCallback(() => {
     if (!activeMissingBackgroundAssetId) {
-      openImagePicker({ mode: 'background-new' });
+      openMediaPicker({ mode: 'background-new' });
       return;
     }
 
-    openImagePicker({
+    openMediaPicker({
       mode: 'background-relink',
       assetId: activeMissingBackgroundAssetId
     });
-  }, [activeMissingBackgroundAssetId, openImagePicker]);
+  }, [activeMissingBackgroundAssetId, openMediaPicker]);
 
-  const resolveImageImportIntent = useCallback(
-    (intent: ImageImportIntent): ImageImportIntent => {
+  const resolveMediaImportIntent = useCallback(
+    (intent: MediaImportIntent): MediaImportIntent => {
       if (intent.mode === 'source-relink' || intent.mode === 'background-relink') {
         return intent;
       }
@@ -931,16 +1202,37 @@ export function App() {
   );
 
   const importFile = useCallback(
-    async (file: File, intent: ImageImportIntent = { mode: 'auto' }) => {
-      if (!isSupportedSourceImage(file)) {
-        showNotice(importFailureNotice(file));
+    async (file: File, intent: MediaImportIntent = { mode: 'auto' }) => {
+      const resolvedIntent = resolveMediaImportIntent(intent);
+      const destination =
+        resolvedIntent.mode === 'background-new' ||
+        resolvedIntent.mode === 'background-relink'
+          ? 'background'
+          : 'source';
+      const mediaKind = mediaKindForFile(file);
+
+      if (
+        (destination === 'background' && !isSupportedSourceImage(file)) ||
+        (destination === 'source' && !mediaKind)
+      ) {
+        showNotice(importFailureNotice(file, undefined, destination));
         return;
       }
+      const resolvedMediaKind = destination === 'background' ? 'image' : mediaKind;
+      if (!resolvedMediaKind) return;
 
       const objectUrl = registerObjectUrl(URL.createObjectURL(file));
-      const resolvedIntent = resolveImageImportIntent(intent);
       try {
-        const dimensions = await readImageDimensions(objectUrl);
+        const importedMedia =
+          resolvedMediaKind === 'video'
+            ? {
+                mediaKind: 'video' as const,
+                metadata: await readVideoMetadata(objectUrl)
+              }
+            : {
+                mediaKind: 'image' as const,
+                metadata: await readImageDimensions(objectUrl)
+              };
 
         if (
           resolvedIntent.mode === 'source-relink' ||
@@ -968,8 +1260,14 @@ export function App() {
                     ...asset,
                     name: file.name,
                     mimeType: file.type || asset.mimeType,
-                    width: dimensions.width,
-                    height: dimensions.height,
+                    mediaKind: importedMedia.mediaKind,
+                    width: importedMedia.metadata.width,
+                    height: importedMedia.metadata.height,
+                    durationMs:
+                      importedMedia.mediaKind === 'video'
+                        ? importedMedia.metadata.durationMs
+                        : undefined,
+                    frameRate: undefined,
                     fileSize: file.size,
                     objectUrl
                   }
@@ -981,7 +1279,9 @@ export function App() {
             title:
               resolvedIntent.mode === 'background-relink'
                 ? 'Backdrop relinked'
-                : 'Image relinked',
+                : importedMedia.mediaKind === 'video'
+                  ? 'Video relinked'
+                  : 'Image relinked',
             detail:
               resolvedIntent.mode === 'background-relink'
                 ? `${file.name} is attached as the backdrop again.`
@@ -990,12 +1290,22 @@ export function App() {
           return;
         }
 
-        const asset = createAssetFromFile(
-          file,
-          objectUrl,
-          dimensions,
-          resolvedIntent.mode === 'background-new' ? 'background' : 'screenshot'
-        );
+        const asset =
+          importedMedia.mediaKind === 'video'
+            ? createVideoAssetFromFile(
+                file,
+                objectUrl,
+                importedMedia.metadata,
+                'screenshot'
+              )
+            : createAssetFromFile(
+                file,
+                objectUrl,
+                importedMedia.metadata,
+                resolvedIntent.mode === 'background-new'
+                  ? 'background'
+                  : 'screenshot'
+              );
         setProject((current) => ({
           ...current,
           updatedAt: new Date().toISOString(),
@@ -1030,21 +1340,25 @@ export function App() {
           title:
             resolvedIntent.mode === 'background-new'
               ? 'Backdrop imported'
-              : 'Image imported',
+              : importedMedia.mediaKind === 'video'
+                ? 'Video imported'
+                : 'Image imported',
           detail:
             resolvedIntent.mode === 'background-new'
               ? `${file.name} is now the canvas backdrop.`
-              : `${file.name} is ready to render.`
+              : importedMedia.mediaKind === 'video'
+                ? `${file.name} is ready for motion preview.`
+                : `${file.name} is ready to render.`
         });
       } catch (error) {
         revokeObjectUrl(objectUrl);
-        showNotice(importFailureNotice(file, toAppFailure(error)));
+        showNotice(importFailureNotice(file, toAppFailure(error), destination));
       }
     },
     [
       project.assets,
       registerObjectUrl,
-      resolveImageImportIntent,
+      resolveMediaImportIntent,
       revokeObjectUrl,
       setProject,
       showNotice
@@ -1054,7 +1368,7 @@ export function App() {
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
       const file = Array.from(event.clipboardData?.files ?? []).find((item) =>
-        isSupportedSourceImage(item)
+        isSupportedSourceMedia(item)
       );
       if (file) void importFile(file, { mode: 'auto' });
     };
@@ -1239,8 +1553,21 @@ export function App() {
     });
   };
 
+  const cancelExport = useCallback(() => {
+    exportAbortControllerRef.current?.abort();
+  }, []);
+
   const handleExport = async (copyToClipboard = false) => {
     if (!activeCard || !activeTarget) {
+      return;
+    }
+
+    if (copyToClipboard && effectiveCompositionMode === 'motion') {
+      showNotice({
+        tone: 'info',
+        title: 'Use video export',
+        detail: 'Motion scenes export as WebM. Switch to Still to copy a PNG frame.'
+      });
       return;
     }
 
@@ -1256,8 +1583,34 @@ export function App() {
     if (isMissingRenderableSource(activeCard, activeAsset)) {
       showNotice({
         tone: 'warning',
-        title: 'Reimport source image',
-        detail: 'Saved projects keep image metadata only. Relink the local screenshot before exporting.'
+        title: 'Reimport source media',
+        detail: 'Saved projects keep source metadata only. Relink the local file before exporting.'
+      });
+      return;
+    }
+
+    const exportFormat: MantleExportFormat = copyToClipboard
+      ? 'png'
+      : exportFormatForComposition(activeCard.export.format, effectiveCompositionMode);
+
+    const cardForExport: MantleCard = {
+      ...activeCard,
+      export: {
+        ...activeCard.export,
+        format: exportFormat,
+        ...(copyToClipboard ? { quality: undefined } : {})
+      }
+    };
+
+    if (
+      activeAsset?.mediaKind === 'video' &&
+      exportFormat !== 'webm' &&
+      exportFormat !== 'gif'
+    ) {
+      showNotice({
+        tone: 'info',
+        title: 'Choose WebM or GIF',
+        detail: 'Video sources need a motion format so the whole scene can be rendered over time.'
       });
       return;
     }
@@ -1271,19 +1624,50 @@ export function App() {
       return;
     }
 
+    if (exportFormat === 'webm') {
+      if (!isMantleWebMSupported()) {
+        showNotice(
+          exportFailureNotice(
+            new Error('WebM export is not supported by this browser.'),
+            exportFormat,
+            false
+          )
+        );
+        return;
+      }
+
+      try {
+        createMantleWebMExportPlan({
+          card: cardForExport,
+          target: activeTarget,
+          asset: activeAsset,
+          backgroundAsset: activeBackgroundAsset,
+          scale: cardForExport.export.scale
+        });
+      } catch (error) {
+        showNotice(exportFailureNotice(toAppFailure(error), exportFormat, false));
+        return;
+      }
+    }
+
+    if (exportFormat === 'gif' && effectiveCompositionMode === 'motion') {
+      try {
+        createMantleGifExportPlan({
+          card: cardForExport,
+          target: activeTarget,
+          asset: activeAsset,
+          backgroundAsset: activeBackgroundAsset,
+          scale: cardForExport.export.scale
+        });
+      } catch (error) {
+        showNotice(exportFailureNotice(toAppFailure(error), exportFormat, false));
+        return;
+      }
+    }
+
     setIsExporting(true);
-    const exportFormat: MantleExportFormat = copyToClipboard
-      ? 'png'
-      : activeCard.export.format;
+    setExportProgress(null);
     try {
-      const cardForExport: MantleCard = {
-        ...activeCard,
-        export: {
-          ...activeCard.export,
-          format: exportFormat,
-          ...(copyToClipboard ? { quality: undefined } : {})
-        }
-      };
       const projectForExport: RuntimeMantleProject = {
         ...project,
         cards: project.cards.map((card) =>
@@ -1309,6 +1693,70 @@ export function App() {
         return;
       }
 
+      if (exportFormat === 'webm') {
+        const controller = new AbortController();
+        exportAbortControllerRef.current = controller;
+        setExportProgress({
+          phase: 'preparing',
+          progress: 0,
+          detail: 'Preparing WebM export',
+          canCancel: true
+        });
+        const result = await exportMantleWebM({
+          card: cardForExport,
+          target: activeTarget,
+          asset: activeAsset,
+          backgroundAsset: activeBackgroundAsset,
+          scale: cardForExport.export.scale,
+          signal: controller.signal,
+          onProgress: (progress) =>
+            setExportProgress({
+              ...progress,
+              canCancel: progress.phase !== 'finalizing'
+            })
+        });
+
+        downloadBlob(result);
+        showNotice({
+          tone: 'success',
+          title: 'Export ready',
+          detail: `${result.filename} downloaded.`
+        });
+        return;
+      }
+
+      if (exportFormat === 'gif' && effectiveCompositionMode === 'motion') {
+        const controller = new AbortController();
+        exportAbortControllerRef.current = controller;
+        setExportProgress({
+          phase: 'preparing',
+          progress: 0,
+          detail: 'Preparing GIF export',
+          canCancel: true
+        });
+        const result = await exportMantleGif({
+          card: cardForExport,
+          target: activeTarget,
+          asset: activeAsset,
+          backgroundAsset: activeBackgroundAsset,
+          scale: cardForExport.export.scale,
+          signal: controller.signal,
+          onProgress: (progress) =>
+            setExportProgress({
+              ...progress,
+              canCancel: progress.phase !== 'finalizing'
+            })
+        });
+
+        downloadBlob(result);
+        showNotice({
+          tone: 'success',
+          title: 'Export ready',
+          detail: `${result.filename} downloaded.`
+        });
+        return;
+      }
+
       const result = await exportMantleProjectCard({
         project: projectForExport,
         cardId: cardForExport.id
@@ -1325,6 +1773,8 @@ export function App() {
         exportFailureNotice(toAppFailure(error), exportFormat, copyToClipboard)
       );
     } finally {
+      exportAbortControllerRef.current = null;
+      setExportProgress(null);
       setIsExporting(false);
     }
   };
@@ -1413,9 +1863,279 @@ export function App() {
       export: { ...activeCard.export, ...patch }
     });
   };
+
+  const updateVideoTrim = (patch: { startMs?: number; endMs?: number }) => {
+    const current = resolveVideoTrimRange(activeCard, activeVideoDurationMs);
+    const maxEnd = Math.max(
+      MIN_VIDEO_TRIM_DURATION_MS,
+      Math.min(
+        VIDEO_EXPORT_MAX_DURATION_MS,
+        activeVideoDurationMs || VIDEO_EXPORT_MAX_DURATION_MS
+      )
+    );
+    const startMs = clampNumber(
+      patch.startMs ?? current.startMs,
+      0,
+      Math.max(0, maxEnd - MIN_VIDEO_TRIM_DURATION_MS)
+    );
+    const endMs = clampNumber(
+      patch.endMs ?? current.endMs,
+      startMs + MIN_VIDEO_TRIM_DURATION_MS,
+      maxEnd
+    );
+
+    updateActiveExport({
+      videoStartMs: Math.round(startMs),
+      videoEndMs: Math.round(endMs),
+      videoDurationMs: Math.round(endMs - startMs)
+    });
+  };
   const exportWidth = activeTarget.width * activeCard.export.scale;
   const exportHeight = activeTarget.height * activeCard.export.scale;
-  const showExportQuality = activeCard.export.format !== 'png';
+  const activeExportFormat = exportFormatForComposition(
+    activeCard.export.format,
+    effectiveCompositionMode
+  );
+  const exportFormatOptions =
+    effectiveCompositionMode === 'motion'
+      ? MOTION_EXPORT_FORMAT_OPTIONS
+      : STILL_EXPORT_FORMAT_OPTIONS;
+  const showExportQuality =
+    activeExportFormat === 'jpeg' || activeExportFormat === 'webp';
+  const showExportGifSettings = activeExportFormat === 'gif';
+  const showExportVideoSettings = activeExportFormat === 'webm';
+  const showExportMotionSettings = showExportGifSettings || showExportVideoSettings;
+  const showExportQualitySettings = showExportQuality || showExportVideoSettings;
+  const videoTrimRange = resolveVideoTrimRange(activeCard, activeVideoDurationMs);
+  const videoLoopEnabled = activeCard.export.videoLoop ?? true;
+  const exportFrameRateMax = showExportGifSettings ? 24 : 60;
+  const exportFrameRateMin = showExportGifSettings ? 6 : 12;
+  const exportFrameRateDefault = showExportGifSettings
+    ? DEFAULT_GIF_FRAME_RATE
+    : DEFAULT_VIDEO_FRAME_RATE;
+  const exportFrameRate = Math.min(
+    exportFrameRateMax,
+    Math.max(
+      exportFrameRateMin,
+      activeCard.export.videoFrameRate ?? exportFrameRateDefault
+    )
+  );
+  const exportVideoDurationMs =
+    activeVideoAsset ? videoTrimRange.durationMs : (
+      activeCard.export.videoDurationMs ?? DEFAULT_VIDEO_DURATION_MS
+    );
+  const exportVideoDurationMaxSeconds = Math.max(
+    0.1,
+    Math.min(
+      VIDEO_EXPORT_MAX_DURATION_MS / 1000,
+      (activeVideoDurationMs || VIDEO_EXPORT_MAX_DURATION_MS) / 1000
+    )
+  );
+  const videoTimelineMaxMs = Math.max(
+    MIN_VIDEO_TRIM_DURATION_MS,
+    Math.min(
+      VIDEO_EXPORT_MAX_DURATION_MS,
+      activeVideoDurationMs || videoTrimRange.endMs
+    )
+  );
+  const stageTimelineDurationMs = Math.max(
+    MIN_VIDEO_TRIM_DURATION_MS,
+    videoTimelineMaxMs
+  );
+  const stagePlayerCurrentTimeMs = clampNumber(
+    videoPlaybackState?.currentTimeMs ?? videoTrimRange.startMs,
+    videoTrimRange.startMs,
+    videoTrimRange.endMs
+  );
+  const stageTimelineTicks = useMemo(
+    () => createTimelineTicks(stageTimelineDurationMs),
+    [stageTimelineDurationMs]
+  );
+  const stageTimelineStyle: StageTimelineStyle = {
+    '--stage-timeline-clip-start': `${clampNumber(
+      (videoTrimRange.startMs / stageTimelineDurationMs) * 100,
+      0,
+      100
+    )}%`,
+    '--stage-timeline-clip-end': `${clampNumber(
+      (videoTrimRange.endMs / stageTimelineDurationMs) * 100,
+      0,
+      100
+    )}%`,
+    '--stage-timeline-playhead': `${clampNumber(
+      (stagePlayerCurrentTimeMs / stageTimelineDurationMs) * 100,
+      0,
+      100
+    )}%`
+  };
+  const videoTrimIsFull =
+    videoTrimRange.startMs <= 0 &&
+    Math.abs(videoTrimRange.endMs - videoTimelineMaxMs) < VIDEO_TRIM_STEP_MS;
+  const getStageTimelineTime = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const rect = stageTimelineTrackRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return videoTrimRange.startMs;
+
+      const progress = clampNumber((event.clientX - rect.left) / rect.width, 0, 1);
+      return snapNumericValue(
+        progress * stageTimelineDurationMs,
+        0,
+        stageTimelineDurationMs,
+        VIDEO_TRIM_STEP_MS
+      );
+    },
+    [stageTimelineDurationMs, videoTrimRange.startMs]
+  );
+  const seekStageTimeline = useCallback(
+    (timeMs: number) => {
+      const targetTimeMs = Math.round(
+        clampNumber(timeMs, videoTrimRange.startMs, videoTrimRange.endMs)
+      );
+      if (lastStageTimelineTimeRef.current === targetTimeMs) return;
+
+      lastStageTimelineTimeRef.current = targetTimeMs;
+      setVideoPlaybackState((current) => ({
+        currentTimeMs: targetTimeMs,
+        durationMs: current?.durationMs || activeVideoAsset?.durationMs || 0,
+        paused: current?.paused ?? true,
+        muted: current?.muted ?? false
+      }));
+      sendVideoPlaybackCommand({ type: 'seek', timeMs: targetTimeMs });
+    },
+    [
+      activeVideoAsset?.durationMs,
+      sendVideoPlaybackCommand,
+      videoTrimRange.endMs,
+      videoTrimRange.startMs
+    ]
+  );
+  const applyStageTimelineDrag = useCallback(
+    (mode: StageTimelineDragMode, timeMs: number) => {
+      const current = resolveVideoTrimRange(activeCard, activeVideoDurationMs);
+
+      if (mode === 'scrub') {
+        seekStageTimeline(timeMs);
+        return;
+      }
+
+      if (mode === 'trim-start') {
+        const startMs = clampNumber(
+          timeMs,
+          0,
+          current.endMs - MIN_VIDEO_TRIM_DURATION_MS
+        );
+        updateVideoTrim({ startMs });
+        seekStageTimeline(startMs);
+        return;
+      }
+
+      const endMs = clampNumber(
+        timeMs,
+        current.startMs + MIN_VIDEO_TRIM_DURATION_MS,
+        videoTimelineMaxMs
+      );
+      updateVideoTrim({ endMs });
+      seekStageTimeline(endMs);
+    },
+    [
+      activeCard,
+      activeVideoDurationMs,
+      seekStageTimeline,
+      updateVideoTrim,
+      videoTimelineMaxMs
+    ]
+  );
+  const beginStageTimelineDrag = useCallback(
+    (mode: StageTimelineDragMode, event: ReactPointerEvent<HTMLElement>) => {
+      if (!activeVideoAsset || activeVideoDurationMs <= 0) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      stageTimelineDragRef.current = { mode, pointerId: event.pointerId };
+      lastStageTimelineTimeRef.current = null;
+      applyStageTimelineDrag(mode, getStageTimelineTime(event));
+    },
+    [
+      activeVideoAsset,
+      activeVideoDurationMs,
+      applyStageTimelineDrag,
+      getStageTimelineTime
+    ]
+  );
+  const handleStageTimelinePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const drag = stageTimelineDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      applyStageTimelineDrag(drag.mode, getStageTimelineTime(event));
+    },
+    [applyStageTimelineDrag, getStageTimelineTime]
+  );
+  const endStageTimelineDrag = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const drag = stageTimelineDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      stageTimelineDragRef.current = null;
+      lastStageTimelineTimeRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    []
+  );
+  const handleStageTimelineKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>) => {
+      if (!activeVideoAsset || activeVideoDurationMs <= 0) return;
+
+      const stepMs = event.shiftKey ? 1000 : VIDEO_TRIM_STEP_MS;
+      const keyActions: Partial<Record<string, number>> = {
+        ArrowLeft: stagePlayerCurrentTimeMs - stepMs,
+        ArrowDown: stagePlayerCurrentTimeMs - stepMs,
+        ArrowRight: stagePlayerCurrentTimeMs + stepMs,
+        ArrowUp: stagePlayerCurrentTimeMs + stepMs,
+        Home: videoTrimRange.startMs,
+        End: videoTrimRange.endMs
+      };
+      const nextTimeMs = keyActions[event.key];
+      if (nextTimeMs == null) return;
+
+      event.preventDefault();
+      seekStageTimeline(nextTimeMs);
+    },
+    [
+      activeVideoAsset,
+      activeVideoDurationMs,
+      seekStageTimeline,
+      stagePlayerCurrentTimeMs,
+      videoTrimRange.endMs,
+      videoTrimRange.startMs
+    ]
+  );
+  const resetVideoTrim = useCallback(() => {
+    updateActiveExport({
+      videoStartMs: 0,
+      videoEndMs: Math.round(videoTimelineMaxMs),
+      videoDurationMs: Math.round(videoTimelineMaxMs)
+    });
+    setVideoPlaybackState((current) => ({
+      currentTimeMs: 0,
+      durationMs: current?.durationMs || activeVideoAsset?.durationMs || 0,
+      paused: current?.paused ?? true,
+      muted: current?.muted ?? false
+    }));
+    sendVideoPlaybackCommand({ type: 'seek', timeMs: 0 });
+  }, [
+    activeVideoAsset?.durationMs,
+    sendVideoPlaybackCommand,
+    updateActiveExport,
+    videoTimelineMaxMs
+  ]);
   const exportFileNamePlaceholder = activeAsset?.name
     ? fileBaseName(activeAsset.name)
     : activeCard.name;
@@ -1459,8 +2179,8 @@ export function App() {
         type="file"
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
-          const intent = imageImportIntentRef.current;
-          imageImportIntentRef.current = { mode: 'auto' };
+          const intent = mediaImportIntentRef.current;
+          mediaImportIntentRef.current = { mode: 'auto' };
           if (file) void importFile(file, intent);
           event.currentTarget.value = '';
         }}
@@ -1501,6 +2221,43 @@ export function App() {
           </span>
         </div>
 
+        <div
+          className={styles.compositionModeSwitch}
+          role="tablist"
+          aria-label="Composition mode"
+        >
+          <button
+            type="button"
+            className={
+              effectiveCompositionMode === 'still'
+                ? `${styles.compositionModeButton} ${styles.compositionModeButtonActive}`
+                : styles.compositionModeButton
+            }
+            aria-disabled={Boolean(activeVideoAsset)}
+            aria-selected={effectiveCompositionMode === 'still'}
+            onClick={() => updateCompositionMode('still')}
+            title={
+              activeVideoAsset
+                ? 'Replace the source with an image to use Still'
+                : 'Still composition'
+            }
+          >
+            Still
+          </button>
+          <button
+            type="button"
+            className={
+              effectiveCompositionMode === 'motion'
+                ? `${styles.compositionModeButton} ${styles.compositionModeButtonActive}`
+                : styles.compositionModeButton
+            }
+            aria-selected={effectiveCompositionMode === 'motion'}
+            onClick={() => updateCompositionMode('motion')}
+          >
+            Motion
+          </button>
+        </div>
+
         <div className={styles.topActions}>
           <div className={styles.toolGroup}>
             <button
@@ -1529,11 +2286,11 @@ export function App() {
             <button
               type="button"
               className={styles.ghostButton}
-              onClick={() => openImagePicker({ mode: 'source-new' })}
-              title="Import source image"
+              onClick={() => openMediaPicker({ mode: 'source-new' })}
+              title="Import source media"
             >
               <Icon name="image" size={14} aria-hidden="true" />
-              <span>Import image</span>
+              <span>Import media</span>
             </button>
           </div>
 
@@ -1541,9 +2298,13 @@ export function App() {
             <button
               type="button"
               className={styles.ghostButton}
-              disabled={isExporting}
+              disabled={isExporting || effectiveCompositionMode === 'motion'}
               onClick={() => openExportSettings('copy')}
-              title="Copy PNG to clipboard"
+              title={
+                effectiveCompositionMode === 'motion'
+                  ? 'Switch to Still to copy a PNG frame'
+                  : 'Copy PNG to clipboard'
+              }
             >
               <Icon name="copy" size={14} aria-hidden="true" />
               <span>Copy PNG</span>
@@ -1553,7 +2314,11 @@ export function App() {
               className={styles.primaryButton}
               disabled={isExporting}
               onClick={() => openExportSettings('download')}
-              title="Download image"
+              title={
+                effectiveCompositionMode === 'motion'
+                  ? 'Download video'
+                  : 'Download image'
+              }
             >
               <Icon name="download" size={14} aria-hidden="true" />
               <span>{isExporting ? 'Exporting…' : 'Download'}</span>
@@ -1582,7 +2347,7 @@ export function App() {
                     <span className={styles.exportPopoverHint}>
                       {exportSettingsMode === 'copy'
                         ? 'Clipboard uses PNG. Scale controls copied resolution.'
-                        : 'Choose file name, format, and quality.'}
+                        : 'Choose file name, format, and output settings.'}
                     </span>
                   </div>
                   <button
@@ -1596,7 +2361,7 @@ export function App() {
                 </div>
 
                 {exportSettingsMode === 'download' ? (
-                  <>
+                  <ExportSection title="Format">
                     <label className={styles.exportTextField}>
                       <span>Filename</span>
                       <input
@@ -1616,12 +2381,12 @@ export function App() {
                       role="group"
                       aria-label="Export format"
                     >
-                      {EXPORT_FORMAT_OPTIONS.map((option) => (
+                      {exportFormatOptions.map((option) => (
                         <button
                           key={option.value}
                           type="button"
                           className={
-                            activeCard.export.format === option.value
+                            activeExportFormat === option.value
                               ? `${styles.exportSegmentedOption} ${styles.exportSegmentedOptionActive}`
                               : styles.exportSegmentedOption
                           }
@@ -1631,35 +2396,189 @@ export function App() {
                         </button>
                       ))}
                     </div>
-                  </>
+                  </ExportSection>
                 ) : null}
 
-                <ExportSlider
-                  label="Scale"
-                  min={1}
-                  max={5}
-                  step={1}
-                  value={activeCard.export.scale}
-                  suffix="×"
-                  onChange={(scale) => updateActiveExport({ scale })}
-                />
-
-                <div className={styles.exportSummary}>
-                  <span>Output size</span>
-                  <strong>{exportWidth} × {exportHeight}</strong>
-                </div>
-
-                {exportSettingsMode === 'download' && showExportQuality ? (
+                <ExportSection title="Size">
                   <ExportSlider
-                    label="Quality"
-                    min={0.5}
-                    max={1}
-                    step={0.02}
-                    value={activeCard.export.quality ?? 0.92}
-                    displayScale={100}
-                    suffix="%"
-                    onChange={(quality) => updateActiveExport({ quality })}
+                    label="Scale"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={activeCard.export.scale}
+                    suffix="×"
+                    onChange={(scale) => updateActiveExport({ scale })}
                   />
+
+                  <div className={styles.exportSummary}>
+                    <span>Output size</span>
+                    <strong>{exportWidth} × {exportHeight}</strong>
+                  </div>
+                </ExportSection>
+
+                {exportSettingsMode === 'download' && showExportMotionSettings ? (
+                  <ExportSection
+                    title="Motion"
+                    meta={showExportVideoSettings ? 'WebM' : 'GIF'}
+                  >
+                    {activeVideoAsset ? (
+                      <>
+                        <ExportSlider
+                          label="Start"
+                          min={0}
+                          max={Math.max(0.1, exportVideoDurationMaxSeconds - 0.1)}
+                          step={0.1}
+                          value={videoTrimRange.startMs / 1000}
+                          suffix="s"
+                          onChange={(start) =>
+                            updateVideoTrim({ startMs: Math.round(start * 1000) })
+                          }
+                        />
+
+                        <ExportSlider
+                          label="End"
+                          min={Math.min(
+                            exportVideoDurationMaxSeconds,
+                            videoTrimRange.startMs / 1000 + 0.1
+                          )}
+                          max={exportVideoDurationMaxSeconds}
+                          step={0.1}
+                          value={videoTrimRange.endMs / 1000}
+                          suffix="s"
+                          onChange={(end) =>
+                            updateVideoTrim({ endMs: Math.round(end * 1000) })
+                          }
+                        />
+
+                        <div className={styles.exportSummary}>
+                          <span>Clip duration</span>
+                          <strong>{formatPlaybackTime(videoTrimRange.durationMs)}</strong>
+                        </div>
+                      </>
+                    ) : (
+                      <ExportSlider
+                        label="Duration"
+                        min={0.1}
+                        max={
+                          showExportGifSettings
+                            ? 30
+                            : exportVideoDurationMaxSeconds
+                        }
+                        step={0.1}
+                        value={
+                          showExportGifSettings
+                            ? (activeCard.export.gifDurationMs ?? DEFAULT_GIF_DURATION_MS) / 1000
+                            : Math.min(
+                                exportVideoDurationMaxSeconds,
+                                exportVideoDurationMs / 1000
+                              )
+                        }
+                        suffix="s"
+                        onChange={(duration) =>
+                          updateActiveExport(
+                            showExportGifSettings
+                              ? { gifDurationMs: Math.round(duration * 1000) }
+                              : { videoDurationMs: Math.round(duration * 1000) }
+                          )
+                        }
+                      />
+                    )}
+
+                    {showExportGifSettings ? (
+                      <>
+                        <label className={styles.exportToggle}>
+                          <span>
+                            <strong>Loop</strong>
+                            <span>Use 0 loop count for infinite replay.</span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={activeCard.export.gifLoop ?? true}
+                            onChange={(event) =>
+                              updateActiveExport({ gifLoop: event.currentTarget.checked })
+                            }
+                          />
+                        </label>
+
+                        {(activeCard.export.gifLoop ?? true) ? (
+                          <ExportSlider
+                            label="Loop count"
+                            min={0}
+                            max={20}
+                            step={1}
+                            value={activeCard.export.gifLoopCount ?? 0}
+                            onChange={(gifLoopCount) =>
+                              updateActiveExport({ gifLoopCount })
+                            }
+                          />
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {showExportVideoSettings && activeVideoAsset ? (
+                      <label className={styles.exportToggle}>
+                        <span>
+                          <strong>Loop preview</strong>
+                          <span>Replay the selected trim range while previewing.</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={videoLoopEnabled}
+                          onChange={(event) =>
+                            updateActiveExport({
+                              videoLoop: event.currentTarget.checked
+                            })
+                          }
+                        />
+                      </label>
+                    ) : null}
+
+                    <ExportSlider
+                      label="Frame rate"
+                      min={exportFrameRateMin}
+                      max={exportFrameRateMax}
+                      step={1}
+                      value={exportFrameRate}
+                      suffix="fps"
+                      onChange={(videoFrameRate) =>
+                        updateActiveExport({ videoFrameRate })
+                      }
+                    />
+                  </ExportSection>
+                ) : null}
+
+                {exportSettingsMode === 'download' && showExportQualitySettings ? (
+                  <ExportSection
+                    title="Quality"
+                    meta={showExportVideoSettings ? 'Video' : 'Image'}
+                  >
+                    {showExportQuality ? (
+                      <ExportSlider
+                        label="Quality"
+                        min={0.5}
+                        max={1}
+                        step={0.02}
+                        value={activeCard.export.quality ?? 0.92}
+                        displayScale={100}
+                        suffix="%"
+                        onChange={(quality) => updateActiveExport({ quality })}
+                      />
+                    ) : null}
+
+                    {showExportVideoSettings ? (
+                      <ExportSlider
+                        label="Bitrate"
+                        min={1}
+                        max={24}
+                        step={0.5}
+                        value={activeCard.export.videoBitrateMbps ?? DEFAULT_VIDEO_BITRATE_MBPS}
+                        suffix=" Mbps"
+                        onChange={(videoBitrateMbps) =>
+                          updateActiveExport({ videoBitrateMbps })
+                        }
+                      />
+                    ) : null}
+                  </ExportSection>
                 ) : null}
 
                 <div className={styles.exportPopoverActions}>
@@ -1695,6 +2614,29 @@ export function App() {
               document.body
             ) : null}
           </div>
+
+          {exportProgress ? (
+            <div className={styles.exportProgress} role="status">
+              <span className={styles.exportProgressText}>
+                <strong>{progressPercent(exportProgress.progress)}</strong>
+                <span>{exportProgress.detail}</span>
+              </span>
+              <span className={styles.exportProgressTrack}>
+                <span
+                  style={{ width: progressPercent(exportProgress.progress) }}
+                />
+              </span>
+              {exportProgress.canCancel ? (
+                <button
+                  type="button"
+                  className={styles.exportProgressCancel}
+                  onClick={cancelExport}
+                >
+                  Cancel
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -1774,7 +2716,7 @@ export function App() {
                           }
                           onClick={() => {
                             if (preset.kind === 'image') {
-                              openImagePicker({ mode: 'background-new' });
+                              openMediaPicker({ mode: 'background-new' });
                               return;
                             }
 
@@ -1943,10 +2885,10 @@ export function App() {
               <>
                 <span className={styles.footerKicker}>Source missing</span>
                 <span className={styles.footerTitle}>
-                  {activeAsset?.name ?? 'Saved source image'}
+                  {activeAsset?.name ?? 'Saved source media'}
                 </span>
                 <span className={styles.footerMeta}>
-                  Project files store image metadata only.
+                  Project files store source metadata only.
                 </span>
                 <button
                   type="button"
@@ -1954,7 +2896,7 @@ export function App() {
                   onClick={openRelinkSourcePicker}
                 >
                   <Icon name="image" size={13} aria-hidden="true" />
-                  <span>Relink image</span>
+                  <span>Relink media</span>
                 </button>
               </>
             ) : activeAsset ? (
@@ -1963,6 +2905,9 @@ export function App() {
                 <span className={styles.footerTitle}>{activeAsset.name}</span>
                 <span className={styles.footerMeta}>
                   {activeAsset.width} × {activeAsset.height}
+                  {activeAsset.mediaKind === 'video' && activeAsset.durationMs
+                    ? ` · ${formatMediaDuration(activeAsset.durationMs)}`
+                    : ''}
                   {activeAsset.fileSize ? ` · ${formatBytes(activeAsset.fileSize)}` : ''}
                 </span>
               </>
@@ -1970,7 +2915,7 @@ export function App() {
               <>
                 <span className={styles.footerKicker}>Source</span>
                 <span className={styles.footerMeta}>
-                  Drop an image, paste from clipboard or use the Image button
+                  Drop media, paste from clipboard or use Import media
                 </span>
               </>
             )}
@@ -1979,18 +2924,32 @@ export function App() {
 
         <section className={styles.stageWrap}>
           <div className={styles.stageMeta}>
-            <span className={styles.stageMetaName}>{activeCard.name}</span>
-            <span className={styles.stageMetaDot} />
-            <span className={styles.stageMetaSize}>
-              {activeTarget.width} × {activeTarget.height}
-            </span>
+            <div className={styles.stageMetaIdentity}>
+              <span className={styles.stageMetaName}>{activeCard.name}</span>
+              <span className={styles.stageMetaDot} />
+              <span className={styles.stageMetaSize}>
+                {activeTarget.width} × {activeTarget.height}
+              </span>
+            </div>
           </div>
           <CardCanvas
             card={activeCard}
             target={activeTarget}
             asset={activeAsset}
             backgroundAsset={activeBackgroundAsset}
-            onChooseSource={() => openImagePicker({ mode: 'source-new' })}
+            motionPreviewActive={effectiveCompositionMode === 'motion'}
+            backgroundAnimationEnabled={backgroundAnimationEnabled}
+            videoClip={
+              activeVideoAsset
+                ? {
+                    startMs: videoTrimRange.startMs,
+                    endMs: videoTrimRange.endMs,
+                    loop: videoLoopEnabled
+                  }
+                : undefined
+            }
+            videoPlaybackCommand={videoPlaybackCommand}
+            onChooseSource={() => openMediaPicker({ mode: 'source-new' })}
             onRelinkSource={openRelinkSourcePicker}
             onSourcePlacementChange={(sourcePlacement) =>
               updateActiveCard({ sourcePlacement })
@@ -2003,7 +2962,159 @@ export function App() {
             onActiveTextLayerChange={(activeTextLayerId) =>
               updateActiveCard({ activeTextLayerId })
             }
+            onVideoPlaybackStateChange={setVideoPlaybackState}
           />
+          {activeVideoAsset ? (
+            <div className={styles.stageTimelineDock} style={stageTimelineStyle}>
+              <div className={styles.stageTimelineToolbar}>
+                <button
+                  type="button"
+                  className={styles.stagePlayerButton}
+                  onClick={() =>
+                    sendVideoPlaybackCommand({ type: 'toggle-playback' })
+                  }
+                  title={videoPlaybackState?.paused === false ? 'Pause' : 'Play'}
+                >
+                  <Icon
+                    name={videoPlaybackState?.paused === false ? 'pause' : 'play'}
+                    size={13}
+                    aria-hidden="true"
+                  />
+                </button>
+                <span className={styles.stageTimelineTimecode}>
+                  {formatPlaybackTime(stagePlayerCurrentTimeMs - videoTrimRange.startMs)}
+                  <span>/</span>
+                  {formatPlaybackTime(videoTrimRange.durationMs)}
+                </span>
+                <button
+                  type="button"
+                  className={
+                    videoLoopEnabled
+                      ? `${styles.stagePlayerButton} ${styles.stagePlayerButtonActive}`
+                      : styles.stagePlayerButton
+                  }
+                  onClick={() => updateActiveExport({ videoLoop: !videoLoopEnabled })}
+                  title={videoLoopEnabled ? 'Loop enabled' : 'Loop disabled'}
+                >
+                  <Icon name="repeat" size={13} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className={styles.stagePlayerButton}
+                  onClick={() =>
+                    sendVideoPlaybackCommand({ type: 'toggle-muted' })
+                  }
+                  title={videoPlaybackState?.muted ? 'Unmute' : 'Mute'}
+                >
+                  <Icon
+                    name={videoPlaybackState?.muted ? 'volume-off' : 'volume'}
+                    size={13}
+                    aria-hidden="true"
+                  />
+                </button>
+                <button
+                  type="button"
+                  className={styles.stagePlayerButton}
+                  disabled={videoTrimIsFull}
+                  onClick={resetVideoTrim}
+                  title="Reset trim"
+                >
+                  <Icon name="reset" size={13} aria-hidden="true" />
+                </button>
+              </div>
+              <div className={styles.stageTimelineBody}>
+                <div className={styles.stageTimelineTrackLabels}>
+                  <span className={styles.stageTimelineTrackLabel}>Video 1</span>
+                </div>
+                <div className={styles.stageTimelineCanvas}>
+                  <div className={styles.stageTimelineRuler} aria-hidden="true">
+                    {stageTimelineTicks.map((tick) => (
+                      <span
+                        key={tick.id}
+                        className={styles.stageTimelineTick}
+                        style={{ left: `${tick.position}%` }}
+                      >
+                        {tick.label}
+                      </span>
+                    ))}
+                  </div>
+                  <div
+                    ref={stageTimelineTrackRef}
+                    className={styles.stageTimelineTrack}
+                    onPointerDown={(event) =>
+                      beginStageTimelineDrag('scrub', event)
+                    }
+                    onPointerMove={handleStageTimelinePointerMove}
+                    onPointerUp={endStageTimelineDrag}
+                    onPointerCancel={endStageTimelineDrag}
+                    onLostPointerCapture={endStageTimelineDrag}
+                    onKeyDown={handleStageTimelineKeyDown}
+                    role="group"
+                    aria-label="Video timeline"
+                    tabIndex={0}
+                  >
+                    <div className={styles.stageTimelineClip}>
+                      <button
+                        type="button"
+                        className={`${styles.stageTimelineTrimHandle} ${styles.stageTimelineTrimHandleStart}`}
+                        onPointerDown={(event) =>
+                          beginStageTimelineDrag('trim-start', event)
+                        }
+                        onPointerMove={handleStageTimelinePointerMove}
+                        onPointerUp={endStageTimelineDrag}
+                        onPointerCancel={endStageTimelineDrag}
+                        onLostPointerCapture={endStageTimelineDrag}
+                        title={`Trim start: ${formatPlaybackTime(videoTrimRange.startMs)}`}
+                        aria-label="Trim video start"
+                      >
+                        <span aria-hidden="true" />
+                      </button>
+                      <span className={styles.stageTimelineClipName}>
+                        {activeVideoAsset.name}
+                      </span>
+                      <span className={styles.stageTimelineClipDuration}>
+                        {formatPlaybackTime(videoTrimRange.durationMs)}
+                      </span>
+                      <span className={styles.stageTimelineClipFrames} aria-hidden="true" />
+                      <button
+                        type="button"
+                        className={`${styles.stageTimelineTrimHandle} ${styles.stageTimelineTrimHandleEnd}`}
+                        onPointerDown={(event) =>
+                          beginStageTimelineDrag('trim-end', event)
+                        }
+                        onPointerMove={handleStageTimelinePointerMove}
+                        onPointerUp={endStageTimelineDrag}
+                        onPointerCancel={endStageTimelineDrag}
+                        onLostPointerCapture={endStageTimelineDrag}
+                        title={`Trim end: ${formatPlaybackTime(videoTrimRange.endMs)}`}
+                        aria-label="Trim video end"
+                      >
+                        <span aria-hidden="true" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.stageTimelinePlayhead}
+                      onPointerDown={(event) =>
+                        beginStageTimelineDrag('scrub', event)
+                      }
+                      onPointerMove={handleStageTimelinePointerMove}
+                      onPointerUp={endStageTimelineDrag}
+                      onPointerCancel={endStageTimelineDrag}
+                      onLostPointerCapture={endStageTimelineDrag}
+                      onKeyDown={handleStageTimelineKeyDown}
+                      title="Drag current frame"
+                      aria-label={`Current frame: ${formatPlaybackTime(
+                        stagePlayerCurrentTimeMs - videoTrimRange.startMs
+                      )}`}
+                    >
+                      <span aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <InspectorPanel
@@ -2033,9 +3144,17 @@ export function App() {
               syncGradientColorsWithPalette(activeCard.background, colors)
             )
           }
-          onBackgroundImageChoose={() => openImagePicker({ mode: 'background-new' })}
+          onBackgroundImageChoose={() => openMediaPicker({ mode: 'background-new' })}
           onBackgroundImageRelink={openRelinkBackgroundPicker}
           onBackgroundImageClear={clearActiveBackgroundImage}
+          showBackgroundAnimationControl={
+            effectiveCompositionMode === 'motion' && backgroundAnimationAvailable
+          }
+          backgroundAnimationAvailable={backgroundAnimationAvailable}
+          backgroundAnimationEnabled={backgroundAnimationEnabled}
+          onBackgroundAnimationChange={(enabled) =>
+            updateActiveExport({ animateBackground: enabled })
+          }
           onPaletteChange={(patch) =>
             updateActiveBackground({
               palette: {
@@ -2086,9 +3205,9 @@ export function App() {
         <div className={styles.dropOverlay}>
           <div className={styles.dropTarget}>
             <Icon name="upload" size={32} aria-hidden="true" />
-            <span className={styles.dropTitle}>Drop screenshot</span>
+            <span className={styles.dropTitle}>Drop media</span>
             <span className={styles.dropHint}>
-              PNG, JPG or WebP · pasting from clipboard also works
+              PNG, JPG, WebP, MP4, MOV or WebM
             </span>
           </div>
         </div>

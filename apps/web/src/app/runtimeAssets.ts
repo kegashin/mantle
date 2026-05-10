@@ -4,9 +4,18 @@ import type {
   MantleRuntimeAsset as RuntimeMantleAsset
 } from '@mantle/schemas/model';
 
+export type AssetDimensions = {
+  width: number;
+  height: number;
+};
+
+export type VideoMetadata = AssetDimensions & {
+  durationMs: number;
+};
+
 export function readImageDimensions(
   sourceUrl: string
-): Promise<{ width: number; height: number }> {
+): Promise<AssetDimensions> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.addEventListener('load', () => {
@@ -14,6 +23,53 @@ export function readImageDimensions(
     });
     image.addEventListener('error', () => reject(new Error('Could not decode image.')));
     image.src = sourceUrl;
+  });
+}
+
+export function readVideoMetadata(sourceUrl: string): Promise<VideoMetadata> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const cleanup = () => {
+      video.removeAttribute('src');
+      video.load();
+    };
+
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.addEventListener(
+      'loadedmetadata',
+      () => {
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        const durationMs = video.duration * 1000;
+        cleanup();
+
+        if (
+          !Number.isFinite(width) ||
+          !Number.isFinite(height) ||
+          !Number.isFinite(durationMs) ||
+          width <= 0 ||
+          height <= 0 ||
+          durationMs < 0
+        ) {
+          reject(new Error('Could not read video metadata.'));
+          return;
+        }
+
+        resolve({ width, height, durationMs });
+      },
+      { once: true }
+    );
+    video.addEventListener(
+      'error',
+      () => {
+        cleanup();
+        reject(new Error('Could not decode video metadata.'));
+      },
+      { once: true }
+    );
+    video.src = sourceUrl;
   });
 }
 
@@ -30,7 +86,7 @@ function createAssetId(): string {
 export function createAssetFromFile(
   file: File,
   objectUrl: string,
-  dimensions: { width: number; height: number },
+  dimensions: AssetDimensions,
   role: MantleAssetRole = 'screenshot'
 ): RuntimeMantleAsset {
   return {
@@ -38,8 +94,29 @@ export function createAssetFromFile(
     role,
     name: file.name,
     mimeType: file.type || 'image/png',
+    mediaKind: 'image',
     width: dimensions.width,
     height: dimensions.height,
+    fileSize: file.size,
+    objectUrl
+  };
+}
+
+export function createVideoAssetFromFile(
+  file: File,
+  objectUrl: string,
+  metadata: VideoMetadata,
+  role: MantleAssetRole = 'screenshot'
+): RuntimeMantleAsset {
+  return {
+    id: createAssetId(),
+    role,
+    name: file.name,
+    mimeType: file.type || 'video/mp4',
+    mediaKind: 'video',
+    width: metadata.width,
+    height: metadata.height,
+    durationMs: metadata.durationMs,
     fileSize: file.size,
     objectUrl
   };

@@ -41,6 +41,33 @@
   --color-success: #9ed8c0;
   --color-danger: #e89090;
 
+  /* Controls */
+  --control-bg: rgba(0, 0, 0, 0.28);
+  --control-bg-strong: rgba(0, 0, 0, 0.38);
+  --control-hover: rgba(255, 255, 255, 0.055);
+  --control-active: rgba(246, 245, 242, 0.105);
+  --control-active-strong: rgba(246, 245, 242, 0.16);
+  --control-track: rgba(255, 255, 255, 0.09);
+  --control-track-hover: rgba(255, 255, 255, 0.13);
+  --control-fill: var(--paper-0);
+  --control-fill-soft: var(--paper-1);
+  --control-focus: rgba(246, 245, 242, 0.18);
+  --control-glow: 0 0 0 4px rgba(246, 245, 242, 0.11);
+  --control-glow-strong: 0 0 0 5px rgba(246, 245, 242, 0.18);
+  --control-active-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.025)),
+    linear-gradient(180deg, #2c2c30 0%, #222227 100%);
+  --control-active-border: rgba(246, 245, 242, 0.19);
+  --control-active-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.17),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.36),
+    0 1px 1px rgba(0, 0, 0, 0.45),
+    0 12px 28px -20px rgba(0, 0, 0, 0.8);
+  --control-inset-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.42);
+
   /* Radii */
   --radius-2xs: 6px;
   --radius-xs: 7px;

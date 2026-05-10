@@ -15,6 +15,7 @@ export type BackgroundGeneratorInput = {
   params: MantleBackgroundParams;
   seed: string;
   renderMode: MantleRenderMode;
+  timeMs: number;
   /** Draw-space scale factor relative to the nominal 1600-wide target. */
   scale: number;
 };

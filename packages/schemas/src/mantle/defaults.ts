@@ -87,7 +87,8 @@ export const DEFAULT_MANTLE_FRAME_TRANSFORM: MantleFrameTransform = deepFreeze({
 
 export const DEFAULT_MANTLE_EXPORT: MantleExportSettings = deepFreeze({
   format: 'png',
-  scale: 1
+  scale: 1,
+  animateBackground: true
 });
 
 export const DEFAULT_MANTLE_SOURCE_PLACEMENT: MantleSourcePlacement = deepFreeze({

@@ -10,6 +10,7 @@ export type PreviewRenderRequestPayload = {
   asset?: MantleRenderableAsset | undefined;
   backgroundAsset?: MantleRenderableAsset | undefined;
   scale: number;
+  timeMs?: number | undefined;
   showEmptyPlaceholderText: boolean;
   hiddenTextLayerIds?: string[] | undefined;
 };
@@ -28,6 +29,8 @@ export type PreviewRenderResult = {
     width: number;
     height: number;
   };
+  contentRadius: number;
+  contentCornerStyle: 'all' | 'bottom' | 'none';
   frameRect: {
     x: number;
     y: number;

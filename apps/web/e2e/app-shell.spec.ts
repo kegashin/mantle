@@ -11,9 +11,9 @@ test('renders the Mantle editor shell', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByText('MANTLE', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Import image', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Choose image' })).toBeVisible();
-  await expect(page.getByText(/drop a screenshot/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Import media', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose media' })).toBeVisible();
+  await expect(page.getByText('Drop media', { exact: true })).toBeVisible();
   await expect(page.getByText('Canvas size', { exact: true })).toBeVisible();
   await expect(page.getByText('Styles', { exact: true })).toBeVisible();
 });

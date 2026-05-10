@@ -410,6 +410,12 @@ const REGISTRY: Record<BackgroundPresetId, BackgroundGenerator> = {
   'dot-grid': dotGrid
 };
 
+const ANIMATED_BACKGROUND_PRESET_IDS = new Set<BackgroundPresetId>([
+  'aurora-gradient',
+  'marbling',
+  'smoke-veil'
+]);
+
 const PRESETS_BY_ID = new Map<BackgroundPresetId, BackgroundPresetDescriptor>(
   BACKGROUND_PRESETS.map((preset) => [preset.id, preset])
 );
@@ -442,6 +448,12 @@ export function resolveBackgroundGenerator(presetId: BackgroundPresetId): Backgr
     throw new Error(`Unknown Mantle background preset "${presetId}".`);
   }
   return generator;
+}
+
+export function isAnimatedBackgroundPresetId(
+  presetId: BackgroundPresetId
+): boolean {
+  return ANIMATED_BACKGROUND_PRESET_IDS.has(presetId);
 }
 
 export function isKnownBackgroundPresetId(presetId: string): presetId is BackgroundPresetId {

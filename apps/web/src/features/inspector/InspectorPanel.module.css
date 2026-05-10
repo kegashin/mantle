@@ -113,7 +113,7 @@
 }
 
 .identityHint {
-  color: var(--color-text-dim);
+  color: var(--color-text-muted);
   font-size: var(--type-xxs);
 }
 
@@ -123,10 +123,11 @@
 .ratioModeGrid {
   display: grid;
   gap: 4px;
-  padding: 3px;
+  padding: 4px;
   border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.16);
+  border-radius: var(--radius-md);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .ratioGrid {
@@ -139,10 +140,10 @@
 
 .ratioButton {
   min-width: 0;
-  min-height: 28px;
+  min-height: 34px;
   padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-2xs);
+  border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
@@ -150,18 +151,24 @@
   letter-spacing: 0.02em;
   transition:
     background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .ratioButton:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--control-hover);
   color: var(--color-text);
 }
 
+.ratioButton:focus-visible {
+  outline: none;
+  box-shadow: var(--control-glow);
+}
+
 .ratioButtonActive {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--control-active-bg);
   color: var(--color-text);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  box-shadow: var(--control-active-shadow);
 }
 
 .dimensionGrid {
@@ -227,7 +234,8 @@
   padding: 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .slider {
@@ -253,7 +261,7 @@
   padding: 0 10px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-xs);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--control-bg-strong);
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: var(--type-xs);
@@ -291,7 +299,7 @@
 .slider:hover .sliderValueButton,
 .slider:focus-within .sliderValueButton {
   border-color: var(--color-hairline-strong);
-  background: rgba(0, 0, 0, 0.32);
+  background: rgba(0, 0, 0, 0.42);
 }
 
 .sliderValueInput:focus {
@@ -306,63 +314,16 @@
   position: relative;
   display: block;
   width: 100%;
-  height: 26px;
-}
-
-/*
- * Ruler ticks. Inset by half thumb width on each side so the marks line up
- * with the thumb's actual travel range (thumb is 8px -> 4px inset).
- * `space-between` places 5 ticks at 0 / 25 / 50 / 75 / 100% of that range.
- */
-.sliderTicks {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 2px;
-  height: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.sliderTickMajor,
-.sliderTickMinor {
-  display: block;
-  width: 1px;
-  background: var(--color-text-soft);
-  transition: opacity var(--dur-fast) var(--ease-out);
-}
-
-.sliderTickMajor {
-  height: 6px;
-  opacity: 0.22;
-}
-
-.sliderTickMinor {
-  height: 3px;
-  opacity: 0.14;
-}
-
-.slider:hover .sliderTickMajor,
-.slider:focus-within .sliderTickMajor {
-  opacity: 0.4;
-}
-
-.slider:hover .sliderTickMinor,
-.slider:focus-within .sliderTickMinor {
-  opacity: 0.26;
+  height: 30px;
 }
 
 .sliderInput {
-  --slider-track-h: 4px;
-  --slider-thumb-w: 8px;
-  --slider-thumb-h: 22px;
+  --slider-track-h: 6px;
+  --slider-thumb-w: 10px;
+  --slider-thumb-h: 24px;
   --slider-fill: 0%;
-  --slider-track: rgba(255, 255, 255, 0.08);
-  --slider-fill-color: var(--color-text-soft);
-  --slider-thumb-bg: var(--color-text);
+  --slider-track: var(--control-track);
+  --slider-fill-color: var(--control-fill);
   --slider-thumb-ring: rgba(0, 0, 0, 0.55);
   --slider-thumb-shadow:
     0 1px 2px rgba(0, 0, 0, 0.65),
@@ -373,9 +334,8 @@
   appearance: none;
   -webkit-appearance: none;
   position: relative;
-  z-index: 2;
   width: 100%;
-  height: 26px;
+  height: 30px;
   margin: 0;
   padding: 0;
   background: transparent;
@@ -396,7 +356,9 @@
       var(--slider-track) var(--slider-fill),
       var(--slider-track) 100%
     );
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
 }
 
 /* Track — Firefox */
@@ -405,7 +367,9 @@
   height: var(--slider-track-h);
   border-radius: var(--radius-pill);
   background: var(--slider-track);
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
 }
 
 .sliderInput::-moz-range-progress {
@@ -423,7 +387,14 @@
   height: var(--slider-thumb-h);
   border: none;
   border-radius: var(--radius-pill);
-  background: var(--slider-thumb-bg);
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      rgba(5, 5, 7, 0.34) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(180deg, #ffffff 0%, var(--control-fill-soft) 100%);
   margin-top: calc((var(--slider-track-h) - var(--slider-thumb-h)) / 2);
   box-shadow: var(--slider-thumb-shadow), var(--slider-thumb-glow);
   cursor: grab;
@@ -439,7 +410,14 @@
   height: var(--slider-thumb-h);
   border: none;
   border-radius: var(--radius-pill);
-  background: var(--slider-thumb-bg);
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      rgba(5, 5, 7, 0.34) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(180deg, #ffffff 0%, var(--control-fill-soft) 100%);
   box-shadow: var(--slider-thumb-shadow), var(--slider-thumb-glow);
   cursor: grab;
   transition:
@@ -450,7 +428,8 @@
 /* Hover */
 
 .sliderInput:hover {
-  --slider-thumb-glow: 0 0 0 3px rgba(246, 245, 242, 0.1);
+  --slider-track: var(--control-track-hover);
+  --slider-thumb-glow: var(--control-glow);
 }
 
 .sliderInput:hover::-webkit-slider-thumb {
@@ -464,13 +443,15 @@
 /* Focus (keyboard) */
 
 .sliderInput:focus-visible {
-  --slider-thumb-glow: 0 0 0 3px rgba(246, 245, 242, 0.18);
+  --slider-track: var(--control-track-hover);
+  --slider-thumb-glow: var(--control-glow-strong);
 }
 
 /* Active / dragging */
 
 .sliderInput:active {
-  --slider-thumb-glow: 0 0 0 4px rgba(246, 245, 242, 0.2);
+  --slider-track: var(--control-track-hover);
+  --slider-thumb-glow: 0 0 0 7px rgba(246, 245, 242, 0.18);
 }
 
 .sliderInput:active::-webkit-slider-thumb {
@@ -515,7 +496,7 @@
   padding: 0 11px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.022);
+  background: var(--color-surface-soft);
   color: var(--color-text-soft);
   font-size: var(--type-xs);
   transition:
@@ -526,8 +507,158 @@
 
 .actionButton:hover {
   border-color: var(--color-hairline-strong);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--control-hover);
   color: var(--color-text);
+}
+
+.actionButton:focus-visible {
+  outline: none;
+  border-color: rgba(246, 245, 242, 0.24);
+  box-shadow: var(--control-glow);
+}
+
+.backgroundAnimationToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
+}
+
+.backgroundAnimationToggle > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.backgroundAnimationToggle strong {
+  color: var(--color-text);
+  font-size: var(--type-xs);
+  font-weight: 560;
+}
+
+.backgroundAnimationToggle span span {
+  color: var(--color-text-muted);
+  font-size: var(--type-xxs);
+  line-height: 1.35;
+}
+
+.backgroundAnimationToggle input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(246, 245, 242, 0.15);
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0)),
+    rgba(0, 0, 0, 0.44);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.82),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.035),
+    0 1px 0 rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.backgroundAnimationToggle input::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 25%, #ffffff 0%, #f2f0eb 42%, #d8d4ca 100%);
+  box-shadow:
+    0 3px 7px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+  transform: translate(0, -50%);
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.backgroundAnimationToggle input::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(90deg, rgba(246, 245, 242, 0.2), rgba(246, 245, 242, 0.04));
+  opacity: 0;
+  transform: translateX(-8px);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+.backgroundAnimationToggle input:hover {
+  border-color: rgba(246, 245, 242, 0.24);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.82),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.045),
+    var(--control-glow);
+}
+
+.backgroundAnimationToggle input:focus-visible {
+  outline: none;
+  border-color: rgba(246, 245, 242, 0.3);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.82),
+    var(--control-glow-strong);
+}
+
+.backgroundAnimationToggle input:checked {
+  border-color: rgba(246, 245, 242, 0.34);
+  background:
+    linear-gradient(180deg, rgba(246, 245, 242, 0.24), rgba(246, 245, 242, 0.07)),
+    rgba(246, 245, 242, 0.1);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.08),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.46),
+    0 0 18px rgba(246, 245, 242, 0.08);
+}
+
+.backgroundAnimationToggle input:checked::before {
+  transform: translate(18px, -50%);
+}
+
+.backgroundAnimationToggle input:checked::after {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.backgroundAnimationToggle input:active::before {
+  transform: translate(1px, -50%) scale(0.94);
+}
+
+.backgroundAnimationToggle input:checked:active::before {
+  transform: translate(17px, -50%) scale(0.94);
+}
+
+.backgroundAnimationToggle input:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.backgroundAnimationToggle input:disabled:hover {
+  border-color: var(--color-hairline-strong);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .backgroundImagePanel {
@@ -599,7 +730,8 @@
   padding: 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .gradientColorHeader {
@@ -616,7 +748,7 @@
   padding: 0 10px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface-soft);
   color: var(--color-text-soft);
   font-size: var(--type-xxs);
   transition:
@@ -627,7 +759,7 @@
 
 .gradientAddButton:hover:not(:disabled) {
   border-color: var(--color-hairline-strong);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--control-hover);
   color: var(--color-text);
 }
 
@@ -764,26 +896,35 @@
   padding: 8px 11px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.018);
+  background: var(--color-surface-soft);
   color: var(--color-text-soft);
   font-size: var(--type-xs);
   text-align: left;
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .frameButton:hover {
   border-color: var(--color-hairline-strong);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--control-hover);
   color: var(--color-text);
 }
 
+.frameButton:focus-visible {
+  outline: none;
+  border-color: rgba(246, 245, 242, 0.24);
+  box-shadow: var(--control-glow);
+}
+
 .frameButtonActive {
-  border-color: var(--color-hairline-active);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--control-active-border);
+  background: var(--control-active-bg);
   color: var(--color-text);
+  box-shadow: var(--control-active-shadow);
 }
 
 /* ---------- Segmented ---------- */
@@ -792,35 +933,44 @@
   display: grid;
   grid-auto-columns: 1fr;
   grid-auto-flow: column;
-  gap: 3px;
-  padding: 3px;
+  gap: 4px;
+  padding: 4px;
   border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.16);
+  border-radius: var(--radius-md);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .segmentedOption {
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-2xs);
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
   font-size: var(--type-xs);
+  font-weight: 550;
   text-align: center;
   transition:
     background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .segmentedOption:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--control-hover);
   color: var(--color-text);
 }
 
+.segmentedOption:focus-visible {
+  outline: none;
+  box-shadow: var(--control-glow);
+}
+
 .segmentedOptionActive {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--control-active-bg);
   color: var(--color-text);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  box-shadow: var(--control-active-shadow);
 }
 
 /* ---------- Text ---------- */
@@ -831,7 +981,8 @@
   padding: 10px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .textLayersHeader {

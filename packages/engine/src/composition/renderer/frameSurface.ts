@@ -15,6 +15,7 @@ import {
   resolveFrameBoxStyle,
   resolveFrameChrome
 } from '../frames';
+import type { FrameChromeResult } from '../frames/types';
 import { assertRgbaScratchBudget } from '../memoryBudget';
 import { isLightPalette, mixHex, parseHexToRgb, rgbToCss } from '../palette';
 import {
@@ -28,6 +29,16 @@ import {
 import type { Rect } from '../types';
 import type { LoadedMantleImage } from './imageCache';
 import { resolveSourceImageDrawPlan } from './sourcePlacement';
+
+export type FrameContentSurface = Pick<FrameChromeResult, 'contentRect' | 'contentRadius'> & {
+  contentCornerStyle: NonNullable<FrameChromeResult['contentCornerStyle']>;
+};
+
+export type DrawableFrameSource = {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+};
 
 function clampRectToCanvas(rect: Rect, width: number, height: number): Rect {
   const x = Math.max(0, Math.floor(rect.x));
@@ -245,16 +256,38 @@ function resolveContentStroke(
     : 'rgba(255, 255, 255, 0.16)';
 }
 
-export function drawImageWithShadowedFrame(
+function drawContentSurfacePath(
   ctx: MantleCanvasRenderingContext2D,
-  image: LoadedMantleImage,
+  surface: FrameContentSurface
+): void {
+  if (surface.contentCornerStyle === 'none') {
+    ctx.beginPath();
+    ctx.rect(
+      surface.contentRect.x,
+      surface.contentRect.y,
+      surface.contentRect.width,
+      surface.contentRect.height
+    );
+    return;
+  }
+
+  if (surface.contentCornerStyle === 'bottom') {
+    drawBottomRoundRectPath(ctx, surface.contentRect, surface.contentRadius);
+    return;
+  }
+
+  drawRoundRectPath(ctx, surface.contentRect, surface.contentRadius);
+}
+
+export function drawFrameSurfaceScaffold(
+  ctx: MantleCanvasRenderingContext2D,
   imageRect: Rect,
   cornerRadius: number,
   contentPadding: number,
   card: MantleCard,
   palette: MantlePalette,
   width: number
-): Rect {
+): FrameContentSurface {
   drawOuterFrameShadow(ctx, imageRect, cornerRadius, card, palette, width);
   drawFrameBox(ctx, imageRect, cornerRadius, contentPadding, card, palette, width);
 
@@ -274,46 +307,41 @@ export function drawImageWithShadowedFrame(
     cardWidth: width,
     title: resolveChromeText(card)
   });
-  const drawContentPath = () => {
-    if (chrome.contentCornerStyle === 'none') {
-      ctx.beginPath();
-      ctx.rect(
-        chrome.contentRect.x,
-        chrome.contentRect.y,
-        chrome.contentRect.width,
-        chrome.contentRect.height
-      );
-      return;
-    }
-
-    if (chrome.contentCornerStyle === 'bottom') {
-      drawBottomRoundRectPath(ctx, chrome.contentRect, chrome.contentRadius);
-      return;
-    }
-
-    drawRoundRectPath(ctx, chrome.contentRect, chrome.contentRadius);
+  const surface: FrameContentSurface = {
+    contentRect: chrome.contentRect,
+    contentRadius: chrome.contentRadius,
+    contentCornerStyle: chrome.contentCornerStyle ?? 'all'
   };
 
   ctx.save();
-  drawContentPath();
+  drawContentSurfacePath(ctx, surface);
   ctx.fillStyle = palette.background;
   ctx.fill();
   ctx.restore();
 
+  return surface;
+}
+
+export function drawSourceIntoFrameContent(
+  ctx: MantleCanvasRenderingContext2D,
+  source: DrawableFrameSource,
+  surface: FrameContentSurface,
+  card: MantleCard
+): void {
+  if (source.width <= 0 || source.height <= 0) return;
+
   ctx.save();
-  drawContentPath();
+  drawContentSurfacePath(ctx, surface);
   ctx.clip();
 
-  const imageWidth = 'naturalWidth' in image ? image.naturalWidth : image.width;
-  const imageHeight = 'naturalHeight' in image ? image.naturalHeight : image.height;
   const plan = resolveSourceImageDrawPlan({
     placement: card.sourcePlacement,
-    sourceWidth: imageWidth,
-    sourceHeight: imageHeight,
-    contentRect: chrome.contentRect
+    sourceWidth: source.width,
+    sourceHeight: source.height,
+    contentRect: surface.contentRect
   });
   ctx.drawImage(
-    image,
+    source.source,
     plan.sourceRect.x,
     plan.sourceRect.y,
     plan.sourceRect.width,
@@ -324,18 +352,56 @@ export function drawImageWithShadowedFrame(
     plan.destinationRect.height
   );
   ctx.restore();
+}
 
+export function drawFrameContentStroke(
+  ctx: MantleCanvasRenderingContext2D,
+  surface: FrameContentSurface,
+  card: MantleCard,
+  palette: MantlePalette,
+  width: number
+): void {
   const contentStroke = resolveContentStroke(card, palette);
   if (contentStroke) {
     ctx.save();
-    drawContentPath();
+    drawContentSurfacePath(ctx, surface);
     ctx.lineWidth = Math.max(1, width / 1600);
     ctx.strokeStyle = contentStroke;
     ctx.stroke();
     ctx.restore();
   }
+}
 
-  return chrome.contentRect;
+export function drawImageWithShadowedFrame(
+  ctx: MantleCanvasRenderingContext2D,
+  image: LoadedMantleImage,
+  imageRect: Rect,
+  cornerRadius: number,
+  contentPadding: number,
+  card: MantleCard,
+  palette: MantlePalette,
+  width: number
+): FrameContentSurface {
+  const imageWidth = 'naturalWidth' in image ? image.naturalWidth : image.width;
+  const imageHeight = 'naturalHeight' in image ? image.naturalHeight : image.height;
+  const surface = drawFrameSurfaceScaffold(
+    ctx,
+    imageRect,
+    cornerRadius,
+    contentPadding,
+    card,
+    palette,
+    width
+  );
+  drawSourceIntoFrameContent(
+    ctx,
+    { source: image, width: imageWidth, height: imageHeight },
+    surface,
+    card
+  );
+  drawFrameContentStroke(ctx, surface, card, palette, width);
+
+  return surface;
 }
 
 export function drawEmptyScreenshotPlaceholder(
@@ -347,7 +413,7 @@ export function drawEmptyScreenshotPlaceholder(
   palette: MantlePalette,
   width: number,
   showPlaceholderText = true
-): Rect {
+): FrameContentSurface {
   drawOuterFrameShadow(ctx, imageRect, cornerRadius, card, palette, width);
   drawFrameBox(ctx, imageRect, cornerRadius, contentPadding, card, palette, width);
 
@@ -400,5 +466,9 @@ export function drawEmptyScreenshotPlaceholder(
     ctx.restore();
   }
 
-  return chrome.contentRect;
+  return {
+    contentRect: chrome.contentRect,
+    contentRadius: chrome.contentRadius,
+    contentCornerStyle: chrome.contentCornerStyle ?? 'all'
+  };
 }

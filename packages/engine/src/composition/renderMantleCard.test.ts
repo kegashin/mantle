@@ -84,4 +84,24 @@ describe('resolveMantleRenderSize', () => {
 
     expect(resolveMantleExportFileName(card, asset)).toBe('launch-update.jpg');
   });
+
+  it('resolves gif export filenames', () => {
+    const card = createMantleCard({
+      sourceAssetId: 'asset-source'
+    });
+    card.export = {
+      ...card.export,
+      format: 'gif'
+    };
+    const asset = {
+      id: 'asset-source',
+      role: 'screenshot',
+      name: 'source.webp',
+      width: 1200,
+      height: 800,
+      objectUrl: 'blob:mantle-source'
+    } as const;
+
+    expect(resolveMantleExportFileName(card, asset)).toBe('source.gif');
+  });
 });

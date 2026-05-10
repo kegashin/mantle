@@ -8,6 +8,7 @@ import {
 } from './utils';
 
 const TWO_PI = Math.PI * 2;
+const MARBLING_ANIMATION_SPEED = 1.85;
 
 const MARBLING_FRAGMENT_SHADER = `
   precision highp float;
@@ -25,6 +26,7 @@ const MARBLING_FRAGMENT_SHADER = `
   uniform float uColorCount;
   uniform float uSeed;
   uniform float uIntensity;
+  uniform float uTime;
 
   float hash11(float p) {
     return fract(sin(p * 127.1 + uSeed * 311.7) * 43758.5453123);
@@ -70,14 +72,24 @@ const MARBLING_FRAGMENT_SHADER = `
 
   vec2 anchorAt(int idx) {
     float fi = float(idx);
-    float angle = fi * 2.39996323 + uSeed * 6.28318530718;
-    float ring = mix(0.58, 1.04, hash11(fi * 13.3 + 2.0));
+    float anchorTime = uTime * 0.12;
+    float angle =
+      fi * 2.39996323 +
+      uSeed * 6.28318530718 +
+      sin(anchorTime * 0.73 + fi * 1.17) * 0.045;
+    float ring =
+      mix(0.58, 1.04, hash11(fi * 13.3 + 2.0)) +
+      sin(anchorTime * 0.91 + fi * 1.93 + uSeed * 4.0) * 0.035;
     vec2 base = vec2(cos(angle) * ring, sin(angle) * ring * 0.72);
     vec2 jitter = vec2(
       hash11(fi * 17.0 + 3.1) - 0.5,
       hash11(fi * 17.0 + 11.7) - 0.5
     ) * 0.24;
-    return base + jitter;
+    vec2 drift = vec2(
+      sin(anchorTime + fi * 2.31 + uSeed * 5.0),
+      cos(anchorTime * 0.82 + fi * 1.71 + uSeed * 7.0)
+    ) * 0.04;
+    return base + jitter + drift;
   }
 
   vec2 anchorLight(int idx) {
@@ -94,15 +106,23 @@ const MARBLING_FRAGMENT_SHADER = `
     float grain = clamp(uParams.w, 0.0, 2.0);
 
     int regionCount = int(floor(mix(3.0, 7.0, min(complexity, 1.0)) + max(0.0, complexity - 1.0) * 4.0 + 0.5));
+    float flowTime = uTime * 0.075;
+    vec2 flowA = vec2(
+      cos(flowTime + uSeed * 6.28318530718),
+      sin(flowTime * 0.73 + uSeed * 4.0)
+    );
+    vec2 flowB = vec2(
+      sin(flowTime * 0.61 + 2.1 + uSeed * 2.0),
+      cos(flowTime * 0.89 + 1.4 + uSeed * 3.0)
+    );
 
-    // Two-octave fbm warp bends region borders.
     vec2 warpA = vec2(
-      fbm(uv * (1.2 + curve * 0.9) + 1.7),
-      fbm(uv * (1.2 + curve * 0.9) + 4.3)
+      fbm(uv * (1.2 + curve * 0.9) + 1.7 + flowA * 0.5),
+      fbm(uv * (1.2 + curve * 0.9) + 4.3 - flowA.yx * 0.45)
     ) - 0.5;
     vec2 warpB = vec2(
-      fbm(uv * (2.6 + curve * 1.4) - warpA * 0.5 + 8.1),
-      fbm(uv * (2.6 + curve * 1.4) - warpA * 0.5 + 12.7)
+      fbm(uv * (2.6 + curve * 1.4) - warpA * 0.5 + 8.1 + flowB * 0.65),
+      fbm(uv * (2.6 + curve * 1.4) - warpA * 0.5 + 12.7 - flowB.yx * 0.58)
     ) - 0.5;
     vec2 distortedUv =
       uv + warpA * (0.36 + curve * 0.95) + warpB * (0.12 + curve * 0.46);
@@ -164,7 +184,7 @@ const MARBLING_FRAGMENT_SHADER = `
 
     // Low-frequency fbm modulates brightness within each region.
     float brush =
-      fbm(distortedUv * (2.6 + curve * 1.0) + bestAnchor * 7.0 + uSeed * 3.7) - 0.5;
+      fbm(distortedUv * (2.6 + curve * 1.0) + bestAnchor * 7.0 + uSeed * 3.7 + flowA * 0.34) - 0.5;
     color *= 1.0 + brush * 0.08;
 
     // Boundary highlight near region edges.
@@ -210,7 +230,8 @@ async function drawShaderVersion({
   intensity,
   params,
   seed,
-  scale
+  scale,
+  timeMs
 }: BackgroundGeneratorInput): Promise<boolean> {
   const { drawShaderBackground } = await import('./shaderBackground');
   return drawShaderBackground({
@@ -228,7 +249,8 @@ async function drawShaderVersion({
     seed,
     intensity,
     scale,
-    shaderKey: 'marbling-v3',
+    timeMs: timeMs * MARBLING_ANIMATION_SPEED,
+    shaderKey: 'marbling-v5',
     fragmentShader: MARBLING_FRAGMENT_SHADER
   });
 }
@@ -242,6 +264,7 @@ export const marbling: BackgroundGenerator = async ({
   params,
   seed,
   renderMode,
+  timeMs,
   scale
 }) => {
   if (
@@ -254,7 +277,8 @@ export const marbling: BackgroundGenerator = async ({
       seed,
       intensity,
       renderMode,
-      scale
+      scale,
+      timeMs
     })
   ) {
     return;
@@ -267,6 +291,7 @@ export const marbling: BackgroundGenerator = async ({
   const grain = readBackgroundParam(params, 'grain', 0.06, 2);
   const strength = clampRange(intensity || 0.78, 1);
   const preview = renderMode === 'preview';
+  const time = (timeMs / 1000) * MARBLING_ANIMATION_SPEED;
   const palette_colors = resolveMarblingColors(colors, palette);
   const regionCount = Math.max(
     3,
@@ -282,8 +307,15 @@ export const marbling: BackgroundGenerator = async ({
 
   for (let i = 0; i < regionCount; i += 1) {
     const color = palette_colors[i % palette_colors.length]!;
-    const cx = rect.x + rect.width * (0.1 + rng() * 0.8);
-    const cy = rect.y + rect.height * (0.1 + rng() * 0.8);
+    const drift = time * (0.08 + i * 0.011) + i * 2.399963229728653;
+    const cx =
+      rect.x +
+      rect.width * (0.1 + rng() * 0.8) +
+      Math.cos(drift) * rect.width * 0.035;
+    const cy =
+      rect.y +
+      rect.height * (0.1 + rng() * 0.8) +
+      Math.sin(drift * 0.83) * rect.height * 0.035;
     const radius = reach * (0.35 + rng() * 0.25 + curve * 0.18);
 
     const gradient = ctx.createRadialGradient(cx, cy, reach * 0.02, cx, cy, radius);

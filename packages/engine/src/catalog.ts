@@ -2,6 +2,7 @@ export {
   BACKGROUND_PRESET_IDS,
   BACKGROUND_PRESETS,
   getBackgroundPresetDefaultParams,
+  isAnimatedBackgroundPresetId,
   isKnownBackgroundPresetId,
   resolveBackgroundPresetDescriptor
 } from './composition/backgrounds';

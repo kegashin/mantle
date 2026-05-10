@@ -23,7 +23,10 @@ import {
   rasterizeCanvas,
   safeExportFileName
 } from './renderer/export';
-import type { MantleRenderableAsset } from './renderer/assets';
+import type {
+  MantleRenderableAsset,
+  MantleRuntimeFrameSource
+} from './renderer/assets';
 import { resolveMantleSceneLayout } from './renderer/sceneLayout';
 import {
   drawMantleBackground,
@@ -39,6 +42,7 @@ export {
   clearMantleImageCache,
 } from './renderer/imageCache';
 export type { MantleRenderableAsset } from './renderer/assets';
+export type { MantleRuntimeFrameSource } from './renderer/assets';
 
 const MAX_MANTLE_RENDER_DIMENSION = 8192;
 const MAX_MANTLE_RENDER_PIXELS =
@@ -54,6 +58,8 @@ export type MantleRenderInput = {
   target: MantleSurfaceTarget;
   asset?: MantleRenderableAsset | undefined;
   backgroundAsset?: MantleRenderableAsset | undefined;
+  sourceFrame?: MantleRuntimeFrameSource | undefined;
+  timeMs?: number | undefined;
   showEmptyPlaceholderText?: boolean | undefined;
   hiddenTextLayerIds?: string[] | undefined;
   renderMode?: MantleRenderMode | undefined;
@@ -68,6 +74,10 @@ export type MantleRenderInput = {
    * a fresh `<canvas>` is created (used by the exporter).
    */
   canvas?: MantleCanvas | undefined;
+};
+
+export type MantleFrameRenderInput = MantleRenderInput & {
+  timeMs: number;
 };
 
 export function resolveMantleRenderSize(
@@ -178,12 +188,14 @@ export async function renderMantleCardToCanvas(
       card: input.card,
       backgroundAsset: input.backgroundAsset,
       layout,
-      renderMode: input.renderMode ?? 'export'
+      renderMode: input.renderMode ?? 'export',
+      timeMs: input.timeMs ?? 0
     });
     await drawMantleFrameSurface({
       ctx,
       card: input.card,
       asset: input.asset,
+      sourceFrame: input.sourceFrame,
       layout,
       showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
     });
@@ -204,6 +216,12 @@ export async function renderMantleCardToCanvas(
   }
 }
 
+export async function renderMantleFrameAt(
+  input: MantleFrameRenderInput
+): Promise<MantleCanvas> {
+  return renderMantleCardToCanvas(input);
+}
+
 export async function exportMantleCard(
   input: MantleRenderInput
 ): Promise<ExportResult> {
@@ -215,7 +233,12 @@ export async function exportMantleCard(
       ...input,
       scale: input.scale ?? input.card.export.scale
     });
-    const blob = await rasterizeCanvas(canvas, format, input.card.export.quality);
+    const blob = await rasterizeCanvas(canvas, format, {
+      quality: input.card.export.quality,
+      gifDurationMs: input.card.export.gifDurationMs,
+      gifLoop: input.card.export.gifLoop,
+      gifLoopCount: input.card.export.gifLoopCount
+    });
     const mimeType = mimeTypeForExportFormat(format);
 
     return {
