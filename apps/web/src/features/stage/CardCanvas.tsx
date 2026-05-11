@@ -54,6 +54,7 @@ const FRAME_TOOLBAR_STAGE_INSET = 12;
 const TEXT_TOOLBAR_ESTIMATED_WIDTH = 132;
 const TEXT_TOOLBAR_ESTIMATED_HEIGHT = 42;
 const TEXT_TOOLBAR_STAGE_INSET = 12;
+const TEXT_TOOLBAR_AVOID_GAP = 8;
 const TEXT_WIDTH_MIN = 0.08;
 const TEXT_WIDTH_MAX = 1;
 const TEXT_SCALE_MIN = 0.5;
@@ -826,10 +827,12 @@ function frameToolbarStyle({
 
 function textToolbarStyle({
   textRect,
-  canvasRect
+  canvasRect,
+  avoidRects = []
 }: {
   textRect: StageRect;
   canvasRect: StageRect;
+  avoidRects?: StageRect[];
 }): CSSProperties {
   const gap = 10;
   const left = clampToRange(
@@ -837,14 +840,34 @@ function textToolbarStyle({
     canvasRect.x + TEXT_TOOLBAR_STAGE_INSET + TEXT_TOOLBAR_ESTIMATED_WIDTH / 2,
     canvasRect.x + canvasRect.width - TEXT_TOOLBAR_STAGE_INSET - TEXT_TOOLBAR_ESTIMATED_WIDTH / 2
   );
+  const toolbarRectForTop = (top: number): StageRect => ({
+    x: left - TEXT_TOOLBAR_ESTIMATED_WIDTH / 2,
+    y: top,
+    width: TEXT_TOOLBAR_ESTIMATED_WIDTH,
+    height: TEXT_TOOLBAR_ESTIMATED_HEIGHT
+  });
+  const overlapsText = (top: number) =>
+    avoidRects.some((rect) =>
+      stageRectsOverlap(
+        toolbarRectForTop(top),
+        expandedRect(rect, TEXT_TOOLBAR_AVOID_GAP)
+      )
+    );
   const topAbove = textRect.y - TEXT_TOOLBAR_ESTIMATED_HEIGHT - gap;
   const topBelow = textRect.y + textRect.height + gap;
   const hasRoomAbove = topAbove >= canvasRect.y + TEXT_TOOLBAR_STAGE_INSET;
-  const top = clampToRange(
-    hasRoomAbove ? topAbove : topBelow,
-    canvasRect.y + TEXT_TOOLBAR_STAGE_INSET,
-    canvasRect.y + canvasRect.height - TEXT_TOOLBAR_STAGE_INSET - TEXT_TOOLBAR_ESTIMATED_HEIGHT
-  );
+  const minTop = canvasRect.y + TEXT_TOOLBAR_STAGE_INSET;
+  const maxTop =
+    canvasRect.y +
+    canvasRect.height -
+    TEXT_TOOLBAR_STAGE_INSET -
+    TEXT_TOOLBAR_ESTIMATED_HEIGHT;
+  const preferredTop = hasRoomAbove ? topAbove : topBelow;
+  const top =
+    [preferredTop, topBelow, topAbove, minTop, maxTop]
+      .map((candidate) => clampToRange(candidate, minTop, maxTop))
+      .find((candidate) => !overlapsText(candidate)) ??
+    clampToRange(preferredTop, minTop, maxTop);
 
   return {
     left: `${left}px`,
@@ -1304,6 +1327,7 @@ export function CardCanvas({
   const frameTransformFrameRef = useRef(0);
   const textTransformFrameRef = useRef(0);
   const lastActiveTextLayerIdRef = useRef<string | undefined>(undefined);
+  const pendingTextLayerEditorOpenRef = useRef<string | undefined>(undefined);
   const pendingFrameTransformRef = useRef<MantleFrameTransform | null>(null);
   const pendingTextPatchRef = useRef<Partial<MantleCard['text']> | null>(null);
   const pendingTextLayerPatchRef = useRef<{
@@ -1665,12 +1689,15 @@ export function CardCanvas({
       lastActiveTextLayerIdRef.current = activeTextLayerId;
       return;
     }
+    const shouldOpenTextEditor =
+      pendingTextLayerEditorOpenRef.current === activeTextLayerId;
+    pendingTextLayerEditorOpenRef.current = undefined;
     lastActiveTextLayerIdRef.current = activeTextLayerId;
     flushFrameTransform();
     flushSourceDraft();
     setFrameEditorOpen(false);
     setSourceEditorOpen(false);
-    setTextEditorOpen(true);
+    setTextEditorOpen(shouldOpenTextEditor);
   }, [activeTextLayerId]);
 
   useEffect(() => {
@@ -1874,10 +1901,14 @@ export function CardCanvas({
 
       try {
         let renderedInWorker = false;
+        const hasWindowLocalMedia =
+          Boolean(state.asset?.objectUrl) ||
+          Boolean(state.backgroundAsset?.objectUrl);
 
         if (
           sourceFrame ||
           state.asset?.mediaKind === 'video' ||
+          hasWindowLocalMedia ||
           !shouldUsePreviewWorker(state.card, state.target, scale)
         ) {
           previewWorkerRef.current?.dispose();
@@ -2158,13 +2189,6 @@ export function CardCanvas({
     visibleTextCssRect && visibleTextRotation !== 0
       ? rotatedBounds(visibleTextCssRect, visibleTextRotation)
       : visibleTextCssRect;
-  const textEditorToolbarStyle =
-    rotatedTextBounds && previewSurface
-      ? textToolbarStyle({
-          textRect: rotatedTextBounds,
-          canvasRect: previewSurface.canvasCssRect
-        })
-      : undefined;
   const textObstacleRects = previewSurface
     ? [
         ...previewSurface.textLayerCssRects.map((rect) => {
@@ -2188,6 +2212,14 @@ export function CardCanvas({
           : [])
       ]
     : [];
+  const textEditorToolbarStyle =
+    rotatedTextBounds && previewSurface
+      ? textToolbarStyle({
+          textRect: rotatedTextBounds,
+          canvasRect: previewSurface.canvasCssRect,
+          avoidRects: textObstacleRects
+        })
+      : undefined;
   const stageHotspotActionsStyle =
     previewSurface
       ? stageActionsStyle({
@@ -2765,12 +2797,8 @@ export function CardCanvas({
     }
   };
 
-  const openTextLayerEditor = (layerId: string) => {
-    if (layerId === activeTextLayerId) {
-      openTextEditor();
-      return;
-    }
-
+  const selectTextLayer = (layerId: string) => {
+    if (layerId === activeTextLayerId && !textEditorOpen) return;
     flushFrameTransform();
     flushSourceDraft();
     flushTextDraft();
@@ -2778,6 +2806,15 @@ export function CardCanvas({
     setSourceEditorOpen(false);
     setTextEditorOpen(false);
     onActiveTextLayerChange?.(layerId);
+  };
+
+  const openTextLayerEditor = (layerId: string) => {
+    if (layerId !== activeTextLayerId) {
+      pendingTextLayerEditorOpenRef.current = layerId;
+      selectTextLayer(layerId);
+      return;
+    }
+    openTextEditor();
   };
 
   return (
@@ -2898,6 +2935,8 @@ export function CardCanvas({
               className={`${styles.stageHotspot} ${styles.textHotspot}`}
               style={textHotspotStyle({ rect, rotation: rect.rotation })}
               onClick={() => openTextLayerEditor(rect.id)}
+              data-testid="text-layer-hotspot"
+              aria-label="Edit text"
               title="Edit text"
             />
           ))

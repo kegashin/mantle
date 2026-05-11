@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bunx --bun vite",
-    "dev:e2e": "bunx --bun vite --host 127.0.0.1 --port 4173",
+    "dev:e2e": "bunx --bun vite --host 127.0.0.1 --port 4174 --strictPort",
     "build": "bunx --bun vite build",
     "preview": "bunx --bun vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit"

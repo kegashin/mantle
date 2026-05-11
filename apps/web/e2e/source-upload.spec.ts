@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
 const SAMPLE_PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8U8AAAAASUVORK5CYII=';
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mP8z8BQDwAFgwJ/lbq8jAAAAABJRU5ErkJggg==';
 
 async function openSection(page: Page, name: string): Promise<void> {
   const section = page.getByRole('button', { name, exact: true });
@@ -62,6 +62,9 @@ test('creates and edits text layers', async ({ page }, testInfo) => {
   await openSection(page, 'Text');
 
   await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Text layer 1' })).toHaveValue(
+    'Text 1'
+  );
   await page
     .getByRole('textbox', { name: 'Text layer 1' })
     .fill('Frame screenshots with texture');
@@ -70,11 +73,32 @@ test('creates and edits text layers', async ({ page }, testInfo) => {
   );
 
   await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Text layer 2' })).toHaveValue(
+    'Text 2'
+  );
   await page
     .getByRole('textbox', { name: 'Text layer 2' })
     .fill('A social card draft.');
   await expect(page.getByRole('textbox', { name: 'Text layer 2' })).toHaveValue(
     'A social card draft.'
   );
+
+  const layerInputs = page.locator('input[aria-label^="Text layer"]');
+  await expect(layerInputs.nth(0)).toHaveValue('A social card draft.');
+  await page
+    .getByRole('button', { name: 'Drag A social card draft.' })
+    .dragTo(page.getByRole('button', { name: 'Drag Frame screenshots with texture' }));
+  await expect(layerInputs.nth(0)).toHaveValue('Frame screenshots with texture');
+
+  const textHotspot = page.getByTestId('text-layer-hotspot').first();
+  await textHotspot.click({ force: true });
+  await expect(page.locator('textarea')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  await page.getByRole('button', { name: 'Drag A social card draft.' }).click();
+  await page.keyboard.press('Control+D');
+  await expect(layerInputs).toHaveCount(3);
+  await page.keyboard.press('Delete');
+  await expect(layerInputs).toHaveCount(2);
   await expect(page.getByText('Layers', { exact: true })).toBeVisible();
 });

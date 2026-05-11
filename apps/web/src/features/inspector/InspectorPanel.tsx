@@ -96,6 +96,7 @@ type InspectorPanelProps = {
   onTextLayerChange: (layerId: string, patch: Partial<MantleTextLayer>) => void;
   onTextLayerDuplicate: (layerId: string) => void;
   onTextLayerMove: (layerId: string, direction: -1 | 1) => void;
+  onTextLayerReorder: (fromIndex: number, toIndex: number) => void;
   onTextLayerRemove: (layerId: string) => void;
   onActiveTextLayerChange: (layerId: string | undefined) => void;
 };
@@ -106,6 +107,9 @@ type FrameShellGroup = {
   label: string;
   values: MantleFramePreset[];
 };
+
+const COLOR_DRAG_MIME_TYPE = 'application/x-mantle-color-index';
+const TEXT_LAYER_DRAG_MIME_TYPE = 'application/x-mantle-text-layer-index';
 
 const BOX_STYLE_LABELS: Record<MantleFrameBoxStyle, IconChoiceMeta> = {
   none: { label: 'None', icon: 'forbidden' },
@@ -663,11 +667,14 @@ export function InspectorPanel({
   onTextLayerChange,
   onTextLayerDuplicate,
   onTextLayerMove,
+  onTextLayerReorder,
   onTextLayerRemove,
   onActiveTextLayerChange
 }: InspectorPanelProps) {
   const [draggedColorIndex, setDraggedColorIndex] = useState<number | null>(null);
   const [dropColorIndex, setDropColorIndex] = useState<number | null>(null);
+  const [draggedTextLayerIndex, setDraggedTextLayerIndex] = useState<number | null>(null);
+  const [dropTextLayerIndex, setDropTextLayerIndex] = useState<number | null>(null);
   const palette = card.background.palette;
   const activeTarget = useMemo(
     () => targets.find((target) => target.id === card.targetId) ?? targets[0],
@@ -761,7 +768,7 @@ export function InspectorPanel({
     index: number
   ) => {
     event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', String(index));
+    event.dataTransfer.setData(COLOR_DRAG_MIME_TYPE, String(index));
     setDraggedColorIndex(index);
     setDropColorIndex(index);
   };
@@ -771,13 +778,45 @@ export function InspectorPanel({
   ) => {
     event.preventDefault();
     const transferredIndex = Number.parseInt(
-      event.dataTransfer.getData('text/plain'),
+      event.dataTransfer.getData(COLOR_DRAG_MIME_TYPE),
       10
     );
     moveGradientColor(
       Number.isFinite(transferredIndex) ? transferredIndex : draggedColorIndex,
       index
     );
+  };
+  const clearTextLayerDragState = () => {
+    setDraggedTextLayerIndex(null);
+    setDropTextLayerIndex(null);
+  };
+  const handleTextLayerDragStart = (
+    event: ReactDragEvent<HTMLButtonElement>,
+    index: number,
+    layerId: string
+  ) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(TEXT_LAYER_DRAG_MIME_TYPE, String(index));
+    setDraggedTextLayerIndex(index);
+    setDropTextLayerIndex(index);
+    onActiveTextLayerChange(layerId);
+  };
+  const handleTextLayerDrop = (
+    event: ReactDragEvent<HTMLDivElement>,
+    index: number
+  ) => {
+    event.preventDefault();
+    const transferredIndex = Number.parseInt(
+      event.dataTransfer.getData(TEXT_LAYER_DRAG_MIME_TYPE),
+      10
+    );
+    const fromIndex = Number.isFinite(transferredIndex)
+      ? transferredIndex
+      : draggedTextLayerIndex;
+    if (fromIndex != null && fromIndex !== index) {
+      onTextLayerReorder(fromIndex, index);
+    }
+    clearTextLayerDragState();
   };
   const paletteFieldCount =
     1 + (showForegroundColor ? 1 : 0) + (showAccentColor ? 1 : 0);
@@ -1307,17 +1346,43 @@ export function InspectorPanel({
                 return (
                   <div
                     key={layer.id}
-                    className={
-                      isActive
-                        ? `${styles.textLayerItem} ${styles.textLayerItemActive}`
-                        : styles.textLayerItem
-                    }
+                    className={[
+                      styles.textLayerItem,
+                      isActive ? styles.textLayerItemActive : '',
+                      draggedTextLayerIndex === index ? styles.textLayerItemDragging : '',
+                      dropTextLayerIndex === index ? styles.textLayerItemDropTarget : ''
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => onActiveTextLayerChange(layer.id)}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      setDropTextLayerIndex(index);
+                    }}
+                    onDragLeave={() => {
+                      setDropTextLayerIndex((current) =>
+                        current === index ? null : current
+                      );
+                    }}
+                    onDrop={(event) => handleTextLayerDrop(event, index)}
                   >
+                    <button
+                      type="button"
+                      className={styles.textLayerDragHandle}
+                      draggable={textLayers.length > 1}
+                      aria-label={`Drag ${layerLabel}`}
+                      title="Drag to reorder"
+                      onDragStart={(event) =>
+                        handleTextLayerDragStart(event, index, layer.id)
+                      }
+                      onDragEnd={clearTextLayerDragState}
+                    >
+                      <span aria-hidden="true" />
+                    </button>
                     <input
                       className={styles.textLayerInput}
                       aria-label={`Text layer ${index + 1}`}
                       value={layer.text}
-                      placeholder={layerLabel}
+                      placeholder={`Text ${index + 1}`}
                       onFocus={() => onActiveTextLayerChange(layer.id)}
                       onChange={(event) =>
                         onTextLayerChange(layer.id, {

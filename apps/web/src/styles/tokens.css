@@ -13,7 +13,7 @@
   --paper-0: #f6f5f2;
   --paper-1: #e7e5e0;
   --paper-2: #afadaa;
-  --paper-3: #75747a;
+  --paper-3: #8e8d94;
   --paper-4: #4a4a52;
 
   /* Surfaces */
@@ -23,10 +23,21 @@
   --color-surface-soft: rgba(255, 255, 255, 0.025);
   --color-surface-raised: rgba(255, 255, 255, 0.035);
 
+  /* Chrome — rail/inspector recede below canvas */
+  --surface-chrome: rgba(0, 0, 0, 0.34);
+  --surface-chrome-strong: rgba(0, 0, 0, 0.5);
+
+  /* Elevation — consistent additive white scale for layered surfaces */
+  --elev-0: transparent;
+  --elev-1: rgba(255, 255, 255, 0.022);
+  --elev-2: rgba(255, 255, 255, 0.042);
+  --elev-3: rgba(255, 255, 255, 0.075);
+  --elev-4: rgba(255, 255, 255, 0.11);
+
   /* Hairlines */
-  --color-hairline: rgba(255, 255, 255, 0.06);
-  --color-hairline-strong: rgba(255, 255, 255, 0.11);
-  --color-hairline-active: rgba(255, 255, 255, 0.2);
+  --color-hairline: rgba(255, 255, 255, 0.085);
+  --color-hairline-strong: rgba(255, 255, 255, 0.14);
+  --color-hairline-active: rgba(255, 255, 255, 0.24);
 
   /* Text */
   --color-text: var(--paper-0);
@@ -34,10 +45,17 @@
   --color-text-muted: var(--paper-2);
   --color-text-dim: var(--paper-3);
 
-  /* Accent */
+  /* Brand — CTA, focus, selected state */
+  --color-brand: #e6b572;
+  --color-brand-strong: #efc88a;
+  --color-brand-soft: rgba(230, 181, 114, 0.14);
+  --color-brand-glow: 0 0 0 4px rgba(230, 181, 114, 0.22);
+  --color-brand-on: #1a1408;
+
+  /* Accent — neutral fill (slider thumbs, control fills) */
   --color-accent: #f6f5f2;
   --color-accent-soft: rgba(246, 245, 242, 0.12);
-  --color-accent-warm: #e8c58a;
+  --color-accent-warm: var(--color-brand);
   --color-success: #9ed8c0;
   --color-danger: #e89090;
 
@@ -51,9 +69,9 @@
   --control-track-hover: rgba(255, 255, 255, 0.13);
   --control-fill: var(--paper-0);
   --control-fill-soft: var(--paper-1);
-  --control-focus: rgba(246, 245, 242, 0.18);
-  --control-glow: 0 0 0 4px rgba(246, 245, 242, 0.11);
-  --control-glow-strong: 0 0 0 5px rgba(246, 245, 242, 0.18);
+  --control-focus: rgba(230, 181, 114, 0.32);
+  --control-glow: 0 0 0 4px rgba(230, 181, 114, 0.16);
+  --control-glow-strong: 0 0 0 5px rgba(230, 181, 114, 0.26);
   --control-active-bg:
     linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.025)),
     linear-gradient(180deg, #2c2c30 0%, #222227 100%);
@@ -105,8 +123,8 @@
   --type-display: 1rem;
   --type-md: 0.86rem;
   --type-sm: 0.78rem;
-  --type-xs: 0.72rem;
-  --type-xxs: 0.66rem;
+  --type-xs: 0.74rem;
+  --type-xxs: 0.7rem;
 
   /* Motion */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -117,4 +135,13 @@
 
   /* Grain */
   --grain-opacity: 0.035;
+}
+
+/* Density — compact is default; cozy bumps type & key control heights ~10% */
+:root[data-density="cozy"] {
+  --type-display: 1.06rem;
+  --type-md: 0.94rem;
+  --type-sm: 0.86rem;
+  --type-xs: 0.8rem;
+  --type-xxs: 0.76rem;
 }

@@ -234,6 +234,43 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
     target instanceof HTMLSelectElement;
 }
 
+function createTextLayerId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `text-${Date.now().toString(36)}`;
+}
+
+function nextTextLayerText(layers: readonly MantleTextLayer[]): string {
+  const used = new Set(layers.map((layer) => layer.text.trim()).filter(Boolean));
+  for (let index = layers.length + 1; index <= MAX_TEXT_LAYERS; index += 1) {
+    const label = `Text ${index}`;
+    if (!used.has(label)) return label;
+  }
+  for (let index = 1; index <= layers.length; index += 1) {
+    const label = `Text ${index}`;
+    if (!used.has(label)) return label;
+  }
+  return `Text ${layers.length + 1}`;
+}
+
+function duplicateTextLayerText(
+  layer: MantleTextLayer,
+  layers: readonly MantleTextLayer[]
+): string {
+  const text = layer.text.trim();
+  if (!text || /^Text \d+$/.test(text)) return nextTextLayerText(layers);
+  return layer.text;
+}
+
+function reorderItems<T>(items: readonly T[], fromIndex: number, toIndex: number): T[] {
+  if (fromIndex === toIndex) return [...items];
+  const nextItems = [...items];
+  const [item] = nextItems.splice(fromIndex, 1);
+  if (item === undefined) return [...items];
+  nextItems.splice(toIndex, 0, item);
+  return nextItems;
+}
+
 function isAppFailure(error: unknown): error is AppFailure {
   return (
     typeof error === 'object' &&
@@ -333,6 +370,14 @@ function createTimelineTicks(durationMs: number): StageTimelineTick[] {
       label: formatPlaybackTime(position * duration)
     };
   });
+}
+
+function formatTimelineClock(ms: number | undefined): string {
+  const totalMs = Math.max(0, Math.round(ms ?? 0));
+  const minutes = Math.floor(totalMs / 60_000);
+  const seconds = Math.floor((totalMs % 60_000) / 1000);
+  const tenths = Math.floor((totalMs % 1000) / 100);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}.${tenths}`;
 }
 
 function snapNumericValue(value: number, min: number, max: number, step: number): number {
@@ -689,6 +734,12 @@ export function App() {
     right: number;
   }>({ top: 56, right: 18 });
   const [notice, setNotice] = useState<AppNotice | null>(null);
+  const [density, setDensity] = useState<'compact' | 'cozy'>(() => {
+    if (typeof window === 'undefined') return 'compact';
+    return window.localStorage.getItem('mantle.density') === 'cozy'
+      ? 'cozy'
+      : 'compact';
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const userPresetInputRef = useRef<HTMLInputElement | null>(null);
   const userPresetFolderInputRef = useRef<HTMLInputElement | null>(null);
@@ -808,6 +859,18 @@ export function App() {
   }, [clearNoticeTimer]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    if (density === 'cozy') {
+      root.setAttribute('data-density', 'cozy');
+      window.localStorage.setItem('mantle.density', 'cozy');
+    } else {
+      root.removeAttribute('data-density');
+      window.localStorage.removeItem('mantle.density');
+    }
+  }, [density]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isEditableShortcutTarget(event.target)) return;
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
@@ -832,6 +895,90 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [redoProject, undoProject]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isEditableShortcutTarget(event.target)) return;
+
+      const key = event.key.toLowerCase();
+      const shouldDuplicate =
+        (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && key === 'd';
+      const shouldDelete =
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        (event.key === 'Delete' || event.key === 'Backspace');
+
+      if (!shouldDuplicate && !shouldDelete) return;
+      event.preventDefault();
+
+      setProject((current) => {
+        const cardIndex = current.cards.findIndex(
+          (card) => card.id === current.activeCardId
+        );
+        const card = current.cards[cardIndex];
+        const layers = card?.textLayers ?? [];
+        const activeLayerId =
+          card?.activeTextLayerId ?? layers[layers.length - 1]?.id;
+        if (cardIndex < 0 || !card || !activeLayerId || layers.length === 0) {
+          return current;
+        }
+
+        const layerIndex = layers.findIndex((layer) => layer.id === activeLayerId);
+        const layer = layers[layerIndex];
+        if (layerIndex < 0 || !layer) return current;
+
+        if (shouldDelete) {
+          const nextLayers = layers.filter((item) => item.id !== activeLayerId);
+          const nextActiveTextLayerId =
+            nextLayers[Math.min(layerIndex, nextLayers.length - 1)]?.id;
+          const nextCard: MantleCard = {
+            ...card,
+            textLayers: nextLayers.length > 0 ? nextLayers : undefined,
+            activeTextLayerId: nextActiveTextLayerId
+          };
+          return {
+            ...current,
+            updatedAt: new Date().toISOString(),
+            cards: current.cards.map((item, index) =>
+              index === cardIndex ? nextCard : item
+            )
+          };
+        }
+
+        if (layers.length >= MAX_TEXT_LAYERS) return current;
+        const nextLayer: MantleTextLayer = {
+          ...layer,
+          id: createTextLayerId(),
+          text: duplicateTextLayerText(layer, layers),
+          transform: {
+            ...layer.transform,
+            x: Math.min(0.92, layer.transform.x + 0.035),
+            y: Math.min(0.92, layer.transform.y + 0.035)
+          }
+        };
+        const nextCard: MantleCard = {
+          ...card,
+          textLayers: [
+            ...layers.slice(0, layerIndex + 1),
+            nextLayer,
+            ...layers.slice(layerIndex + 1)
+          ],
+          activeTextLayerId: nextLayer.id
+        };
+        return {
+          ...current,
+          updatedAt: new Date().toISOString(),
+          cards: current.cards.map((item, index) =>
+            index === cardIndex ? nextCard : item
+          )
+        };
+      });
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setProject]);
 
   useEffect(() => {
     const folderInput = userPresetFolderInputRef.current;
@@ -1812,11 +1959,6 @@ export function App() {
     });
   };
 
-  const createTextLayerId = () =>
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `text-${Date.now().toString(36)}`;
-
   const createDefaultTextLayer = (
     id: string,
     layers: MantleTextLayer[]
@@ -1824,7 +1966,7 @@ export function App() {
     const offset = Math.min(0.16, layers.length * 0.035);
     return {
       id,
-      text: 'Text',
+      text: nextTextLayerText(layers),
       font: activeCard.text.titleFont === 'sans' ? 'display' : activeCard.text.titleFont,
       align: 'center',
       color: activeCard.text.titleColor,
@@ -1886,6 +2028,7 @@ export function App() {
     const duplicate: MantleTextLayer = {
       ...layer,
       id,
+      text: duplicateTextLayerText(layer, layers),
       transform: {
         ...layer.transform,
         x: Math.min(0.92, layer.transform.x + 0.035),
@@ -1918,6 +2061,24 @@ export function App() {
     updateActiveCard({
       textLayers: nextLayers,
       activeTextLayerId: layerId
+    });
+  };
+
+  const reorderActiveTextLayer = (fromIndex: number, toIndex: number) => {
+    const layers = activeCard.textLayers ?? [];
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= layers.length ||
+      toIndex >= layers.length ||
+      fromIndex === toIndex
+    ) {
+      return;
+    }
+
+    updateActiveCard({
+      textLayers: reorderItems(layers, fromIndex, toIndex),
+      activeTextLayerId: layers[fromIndex]?.id ?? activeCard.activeTextLayerId
     });
   };
 
@@ -2009,6 +2170,10 @@ export function App() {
     videoPlaybackState?.currentTimeMs ?? videoTrimRange.startMs,
     videoTrimRange.startMs,
     videoTrimRange.endMs
+  );
+  const stageTimelineSourceDurationMs = Math.max(
+    videoTimelineMaxMs,
+    activeVideoDurationMs || videoTrimRange.endMs
   );
   const stageTimelineTicks = useMemo(
     () => createTimelineTicks(stageTimelineDurationMs),
@@ -2280,7 +2445,6 @@ export function App() {
           <span className={styles.brandMark} aria-hidden="true">M</span>
           <span className={styles.brandWord}>
             <span>MANTLE</span>
-            <span className={styles.brandTag}>v0</span>
           </span>
         </div>
 
@@ -2342,6 +2506,22 @@ export function App() {
               aria-label="Redo"
             >
               <Icon name="redo" size={14} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`${styles.ghostButton} ${styles.iconButton}`}
+              onClick={() =>
+                setDensity((current) => (current === 'cozy' ? 'compact' : 'cozy'))
+              }
+              title={
+                density === 'cozy'
+                  ? 'Switch to compact density'
+                  : 'Switch to cozy density'
+              }
+              aria-label="Toggle UI density"
+              aria-pressed={density === 'cozy'}
+            >
+              <Icon name="density" size={14} aria-hidden="true" />
             </button>
           </div>
 
@@ -3044,22 +3224,28 @@ export function App() {
                     aria-hidden="true"
                   />
                 </button>
-                <span className={styles.stageTimelineTimecode}>
-                  {formatPlaybackTime(stagePlayerCurrentTimeMs - videoTrimRange.startMs)}
-                  <span>/</span>
-                  {formatPlaybackTime(videoTrimRange.durationMs)}
-                </span>
+                <div className={styles.stageTimelineStatus}>
+                  <span className={styles.stageTimelineStatusPrimary}>
+                    {formatTimelineClock(stagePlayerCurrentTimeMs)}
+                    <span>/</span>
+                    {formatTimelineClock(stageTimelineSourceDurationMs)}
+                  </span>
+                  <span className={styles.stageTimelineStatusMeta}>
+                    clip {formatTimelineClock(videoTrimRange.durationMs)}
+                  </span>
+                </div>
                 <button
                   type="button"
                   className={
                     videoLoopEnabled
-                      ? `${styles.stagePlayerButton} ${styles.stagePlayerButtonActive}`
-                      : styles.stagePlayerButton
+                      ? `${styles.stagePlayerButton} ${styles.stagePlayerTextButton} ${styles.stagePlayerButtonActive}`
+                      : `${styles.stagePlayerButton} ${styles.stagePlayerTextButton}`
                   }
                   onClick={() => updateActiveExport({ videoLoop: !videoLoopEnabled })}
                   title={videoLoopEnabled ? 'Loop enabled' : 'Loop disabled'}
                 >
                   <Icon name="repeat" size={13} aria-hidden="true" />
+                  <span>Loop</span>
                 </button>
                 <button
                   type="button"
@@ -3077,12 +3263,13 @@ export function App() {
                 </button>
                 <button
                   type="button"
-                  className={styles.stagePlayerButton}
+                  className={`${styles.stagePlayerButton} ${styles.stagePlayerTextButton}`}
                   disabled={videoTrimIsFull}
                   onClick={resetVideoTrim}
-                  title="Reset trim"
+                  title="Use full source duration"
                 >
                   <Icon name="reset" size={13} aria-hidden="true" />
+                  <span>Full</span>
                 </button>
               </div>
               <div className={styles.stageTimelineBody}>
@@ -3130,7 +3317,7 @@ export function App() {
                         title={`Trim start: ${formatPlaybackTime(videoTrimRange.startMs)}`}
                         aria-label="Trim video start"
                       >
-                        <span aria-hidden="true" />
+                        <span className={styles.stageTimelineTrimGrip} aria-hidden="true" />
                       </button>
                       <span className={styles.stageTimelineClipName}>
                         {activeVideoAsset.name}
@@ -3152,7 +3339,7 @@ export function App() {
                         title={`Trim end: ${formatPlaybackTime(videoTrimRange.endMs)}`}
                         aria-label="Trim video end"
                       >
-                        <span aria-hidden="true" />
+                        <span className={styles.stageTimelineTrimGrip} aria-hidden="true" />
                       </button>
                     </div>
                     <button
@@ -3167,11 +3354,14 @@ export function App() {
                       onLostPointerCapture={endStageTimelineDrag}
                       onKeyDown={handleStageTimelineKeyDown}
                       title="Drag current frame"
-                      aria-label={`Current frame: ${formatPlaybackTime(
-                        stagePlayerCurrentTimeMs - videoTrimRange.startMs
+                      aria-label={`Current frame: ${formatTimelineClock(
+                        stagePlayerCurrentTimeMs
                       )}`}
                     >
-                      <span aria-hidden="true" />
+                      <span className={styles.stageTimelinePlayheadLabel}>
+                        {formatTimelineClock(stagePlayerCurrentTimeMs)}
+                      </span>
+                      <span className={styles.stageTimelinePlayheadKnob} aria-hidden="true" />
                     </button>
                   </div>
                 </div>
@@ -3259,6 +3449,7 @@ export function App() {
           onTextLayerChange={updateActiveTextLayer}
           onTextLayerDuplicate={duplicateActiveTextLayer}
           onTextLayerMove={moveActiveTextLayer}
+          onTextLayerReorder={reorderActiveTextLayer}
           onTextLayerRemove={removeActiveTextLayer}
           onActiveTextLayerChange={(activeTextLayerId) =>
             updateActiveCard({ activeTextLayerId })
