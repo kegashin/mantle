@@ -25,6 +25,7 @@ export type {
   AnimatedGifOptions
 } from './composition/renderer/staticGif';
 export type {
+  MantlePreviewRenderInput,
   MantlePreviewRenderer,
   MantlePreviewRenderResult
 } from './composition/previewRenderer';

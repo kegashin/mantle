@@ -31,6 +31,7 @@ function cloneMantleBackground(background: MantleBackground): MantleBackground {
   return {
     ...background,
     params: background.params ? { ...background.params } : undefined,
+    animation: background.animation ? { ...background.animation } : undefined,
     palette: cloneMantlePalette(background.palette),
     colors: background.colors ? [...background.colors] : undefined
   };

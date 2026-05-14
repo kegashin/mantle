@@ -10,11 +10,14 @@ export const terminalScanline: BackgroundGenerator = ({
   intensity,
   params,
   seed,
+  timeMs,
   scale
 }) => {
+  const time = timeMs / 1000;
   const scanlineRng = createRng(`terminal-scanline::scanlines::${seed}`);
   const sweepRng = createRng(`terminal-scanline::sweep::${seed}`);
-  const glyphRng = createRng(`terminal-scanline::glyphs::${seed}`);
+  const glyphFrame = Math.floor(time * 5);
+  const glyphRng = createRng(`terminal-scanline::glyphs::${seed}::${glyphFrame}`);
   const scanlineDensity = readBackgroundParam(params, 'scanlineDensity', intensity);
   const glyphDensity = readBackgroundParam(params, 'glyphDensity', Math.min(1, intensity * 0.58));
   const sweepGlow = readBackgroundParam(params, 'sweepGlow', intensity);
@@ -37,9 +40,15 @@ export const terminalScanline: BackgroundGenerator = ({
   const lineThickness = Math.max(1, Math.round(scale * (0.4 + scanlineDensity * 0.55)));
   const glowRgb = parseHexToRgb(palette.accent);
   const baseAlpha = 0.018 + scanlineDensity * 0.085;
+  const scanlineShift =
+    ((time * scale * (12 + scanlineDensity * 34)) % lineSpacing) || 0;
 
   ctx.save();
-  for (let y = rect.y; y < rect.y + rect.height; y += lineSpacing) {
+  for (
+    let y = rect.y - lineSpacing + scanlineShift;
+    y < rect.y + rect.height;
+    y += lineSpacing
+  ) {
     const flicker = 0.78 + scanlineRng() * 0.22;
     ctx.fillStyle = rgbToCss(glowRgb, baseAlpha * flicker);
     ctx.fillRect(rect.x, y, rect.width, lineThickness);
@@ -49,7 +58,9 @@ export const terminalScanline: BackgroundGenerator = ({
   const bands = Math.max(0, Math.round(sweepGlow * 4));
   for (let i = 0; i < bands; i += 1) {
     const bandHeight = rect.height * (0.05 + sweepRng() * (0.08 + sweepGlow * 0.08));
-    const bandCenter = rect.y + sweepRng() * rect.height;
+    const bandSpeed = rect.height * (0.035 + sweepGlow * 0.08) * (0.72 + sweepRng());
+    const bandCenter =
+      rect.y + ((sweepRng() * rect.height + time * bandSpeed) % rect.height);
     const bandY = Math.min(
       rect.y + rect.height - bandHeight,
       Math.max(rect.y, bandCenter - bandHeight / 2)

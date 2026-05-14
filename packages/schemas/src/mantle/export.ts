@@ -23,6 +23,7 @@ export const MantleExportSettingsSchema = z.object({
   videoDurationMs: z.number().int().min(100).max(60000).optional(),
   videoFrameRate: z.number().int().min(1).max(60).optional(),
   videoBitrateMbps: z.number().min(0.5).max(40).optional(),
+  audioEnabled: z.boolean().optional(),
   animateBackground: z.boolean().optional(),
   fileName: z.string().trim().min(1).max(120).optional()
 }).strict();

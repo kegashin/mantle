@@ -32,10 +32,10 @@ function deepFreeze<T extends DeepFreezable>(value: T): T {
 }
 
 export const DEFAULT_MANTLE_PALETTE: MantlePalette = deepFreeze({
-  background: '#050505',
-  foreground: '#f5f5f5',
-  accent: '#d8d8d8',
-  muted: '#737373'
+  background: '#060609',
+  foreground: '#f2f4ff',
+  accent: '#9a8cff',
+  muted: '#3d6a76'
 });
 
 export const DEFAULT_MANTLE_TEXT: MantleText = deepFreeze({
@@ -50,29 +50,34 @@ export const DEFAULT_MANTLE_TEXT: MantleText = deepFreeze({
 });
 
 export const DEFAULT_MANTLE_BACKGROUND: MantleBackground = deepFreeze({
-  family: 'gradient',
-  presetId: 'marbling',
-  seed: 'marbling',
-  intensity: 0.8,
+  family: 'mesh',
+  presetId: 'smoke-veil',
+  seed: 'smoke-veil',
+  intensity: 0.6,
   params: {
-    complexity: 1,
-    sharpness: 1,
-    curve: 1,
-    grain: 0.05
+    details: 0.68,
+    glow: 0.66,
+    grain: 0.08
   },
-  colors: ['#050505', '#f5f5f5', '#252525', '#d8d8d8', '#737373', '#ffffff'],
+  animation: {
+    speed: 0.65
+  },
   palette: DEFAULT_MANTLE_PALETTE
 });
 
 export const DEFAULT_MANTLE_FRAME: MantleFrame = deepFreeze({
   preset: 'minimal-browser',
-  boxStyle: 'solid',
-  padding: 96,
-  contentPadding: 0,
-  cornerRadius: 24,
-  shadowColor: '#000000',
-  shadowStrength: 1,
-  shadowSoftness: 1,
+  boxStyle: 'glass-panel',
+  boxColor: '#ffffff',
+  boxOpacity: 0.16,
+  glassBlur: 5,
+  glassOutlineOpacity: 0.24,
+  padding: 116,
+  contentPadding: 32,
+  cornerRadius: 22,
+  shadowColor: '#ffffff',
+  shadowStrength: 0.95,
+  shadowSoftness: 1.1,
   shadowDistance: 1,
   alignment: 'center'
 });
@@ -88,6 +93,7 @@ export const DEFAULT_MANTLE_FRAME_TRANSFORM: MantleFrameTransform = deepFreeze({
 export const DEFAULT_MANTLE_EXPORT: MantleExportSettings = deepFreeze({
   format: 'png',
   scale: 1,
+  audioEnabled: true,
   animateBackground: true
 });
 
@@ -153,8 +159,8 @@ export const DEFAULT_MANTLE_TARGETS: MantleSurfaceTarget[] = deepFreeze([
 ]);
 
 export const DEFAULT_MANTLE_THEME: MantleTheme = deepFreeze({
-  id: 'marbling',
-  name: 'Marbling',
+  id: 'smoke-veil',
+  name: 'Smoke Veil',
   background: DEFAULT_MANTLE_BACKGROUND,
   frame: DEFAULT_MANTLE_FRAME,
   text: DEFAULT_MANTLE_TEXT

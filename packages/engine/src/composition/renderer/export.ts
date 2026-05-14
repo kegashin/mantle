@@ -15,7 +15,8 @@ const EXPORT_MIME_TYPES: Record<MantleExportFormat, string> = {
   jpeg: 'image/jpeg',
   webp: 'image/webp',
   gif: 'image/gif',
-  webm: 'video/webm'
+  webm: 'video/webm',
+  mp4: 'video/mp4'
 };
 
 const EXPORT_EXTENSIONS: Record<MantleExportFormat, string> = {
@@ -23,7 +24,8 @@ const EXPORT_EXTENSIONS: Record<MantleExportFormat, string> = {
   jpeg: 'jpg',
   webp: 'webp',
   gif: 'gif',
-  webm: 'webm'
+  webm: 'webm',
+  mp4: 'mp4'
 };
 
 export function mimeTypeForExportFormat(format: MantleExportFormat): string {
@@ -35,7 +37,7 @@ export function extensionForExportFormat(format: MantleExportFormat): string {
 }
 
 export function safeExportFileName(name: string): string {
-  const baseName = name.replace(/\.(png|jpe?g|webp|gif|webm)$/i, '');
+  const baseName = name.replace(/\.(png|jpe?g|webp|gif|webm|mp4)$/i, '');
 
   return (
     baseName
@@ -84,8 +86,8 @@ export async function rasterizeCanvas(
     ], { type: mimeType });
   }
 
-  if (format === 'webm') {
-    throw new Error('WebM export requires the browser video exporter.');
+  if (format === 'webm' || format === 'mp4') {
+    throw new Error(`${format.toUpperCase()} export requires the browser video exporter.`);
   }
 
   if ('convertToBlob' in canvas) {

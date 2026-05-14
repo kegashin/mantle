@@ -1,4 +1,9 @@
 import type { MantleCard } from '@mantle/schemas/model';
+import {
+  MANTLE_BACKGROUND_ANIMATION_SPEED_DEFAULT,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MAX,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MIN
+} from '@mantle/schemas/model';
 
 import { resolveBackgroundGenerator } from '../backgrounds';
 import type { MantleCanvasRenderingContext2D } from '../canvas';
@@ -96,6 +101,16 @@ function withFrameRotation<T>(
   }
 }
 
+function resolveBackgroundAnimationTime(card: MantleCard, timeMs: number): number {
+  const speed =
+    card.background.animation?.speed ?? MANTLE_BACKGROUND_ANIMATION_SPEED_DEFAULT;
+  const safeSpeed = Math.min(
+    MANTLE_BACKGROUND_ANIMATION_SPEED_MAX,
+    Math.max(MANTLE_BACKGROUND_ANIMATION_SPEED_MIN, speed)
+  );
+  return Math.max(0, timeMs) * safeSpeed;
+}
+
 export async function drawMantleBackground({
   ctx,
   card,
@@ -126,7 +141,7 @@ export async function drawMantleBackground({
     params: card.background.params ?? {},
     seed: card.background.seed,
     renderMode,
-    timeMs,
+    timeMs: resolveBackgroundAnimationTime(card, timeMs),
     scale: layout.drawScale
   });
 

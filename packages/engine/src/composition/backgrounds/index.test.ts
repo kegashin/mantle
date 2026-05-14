@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isAnimatedBackgroundPresetId,
   isKnownBackgroundPresetId,
   resolveBackgroundGenerator,
   resolveBackgroundPresetDescriptor
@@ -10,6 +11,16 @@ describe('background preset registry', () => {
   it('resolves canonical background preset ids', () => {
     expect(resolveBackgroundPresetDescriptor('soft-gradient').id).toBe('soft-gradient');
     expect(resolveBackgroundGenerator('soft-gradient')).toBeTypeOf('function');
+  });
+
+  it('marks only expressive procedural presets as animated', () => {
+    expect(isAnimatedBackgroundPresetId('smoke-veil')).toBe(true);
+    expect(isAnimatedBackgroundPresetId('signal-field')).toBe(true);
+    expect(isAnimatedBackgroundPresetId('falling-pattern')).toBe(true);
+    expect(isAnimatedBackgroundPresetId('terminal-scanline')).toBe(true);
+    expect(isAnimatedBackgroundPresetId('solid-color')).toBe(false);
+    expect(isAnimatedBackgroundPresetId('image-fill')).toBe(false);
+    expect(isAnimatedBackgroundPresetId('contour-lines')).toBe(false);
   });
 
   it.each([

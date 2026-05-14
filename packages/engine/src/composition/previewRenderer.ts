@@ -46,9 +46,13 @@ type CachedLayout = {
 };
 
 export type MantlePreviewRenderer = {
-  render: (input: MantleRenderInput) => Promise<MantlePreviewRenderResult>;
+  render: (input: MantlePreviewRenderInput) => Promise<MantlePreviewRenderResult>;
   clear: () => void;
   dispose: () => void;
+};
+
+export type MantlePreviewRenderInput = MantleRenderInput & {
+  renderFrameSurface?: boolean | undefined;
 };
 
 export type MantlePreviewRenderResult = {
@@ -209,7 +213,7 @@ function sortStable(value: unknown): unknown {
 }
 
 function createLayoutGeometryKey(
-  input: MantleRenderInput,
+  input: MantlePreviewRenderInput,
   width: number,
   height: number,
   scale: number
@@ -228,7 +232,7 @@ function createLayoutGeometryKey(
 }
 
 function createTextDrawKey(
-  input: MantleRenderInput,
+  input: MantlePreviewRenderInput,
   layoutGeometryKey: string,
   width: number,
   height: number
@@ -247,7 +251,7 @@ function createTextDrawKey(
 }
 
 function createBackgroundKey(
-  input: MantleRenderInput,
+  input: MantlePreviewRenderInput,
   width: number,
   height: number,
   scale: number
@@ -276,7 +280,7 @@ function createBaseKey({
   width,
   height
 }: {
-  input: MantleRenderInput;
+  input: MantlePreviewRenderInput;
   backgroundKey: string;
   layoutGeometryKey: string;
   width: number;
@@ -290,6 +294,7 @@ function createBaseKey({
     height,
     backgroundKey,
     layoutGeometryKey,
+    renderFrameSurface: input.renderFrameSurface ?? true,
     frame: input.card.frame,
     frameTransform: input.card.frameTransform ?? null,
     sourcePlacement: sourceAsset ? input.card.sourcePlacement ?? null : null,
@@ -306,7 +311,7 @@ function createFrameScaffoldKey({
   width,
   height
 }: {
-  input: MantleRenderInput;
+  input: MantlePreviewRenderInput;
   backgroundKey: string;
   layoutGeometryKey: string;
   width: number;
@@ -318,6 +323,7 @@ function createFrameScaffoldKey({
     height,
     backgroundKey,
     layoutGeometryKey,
+    renderFrameSurface: input.renderFrameSurface ?? true,
     frame: input.card.frame,
     frameTransform: input.card.frameTransform ?? null,
     cardName: input.card.name
@@ -336,7 +342,7 @@ function resolveCachedLayout({
 }: {
   cachedLayout: CachedLayout | undefined;
   ctx: MantleCanvasRenderingContext2D;
-  input: MantleRenderInput;
+  input: MantlePreviewRenderInput;
   width: number;
   height: number;
   scale: number;
@@ -441,8 +447,11 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         width,
         height
       });
+      const renderFrameSurface = input.renderFrameSurface ?? true;
       const hasRuntimeSourceFrame =
-        input.asset?.mediaKind === 'video' && input.sourceFrame != null;
+        renderFrameSurface &&
+        input.asset?.mediaKind === 'video' &&
+        input.sourceFrame != null;
       const frameScaffoldKey = hasRuntimeSourceFrame
         ? createFrameScaffoldKey({
             input,
@@ -459,35 +468,47 @@ export function createMantlePreviewRenderer(): MantlePreviewRenderer {
         try {
           baseCtx.clearRect(0, 0, width, height);
           baseCtx.drawImage(backgroundLayer.canvas, 0, 0);
-          cachedFrameSurface = hasRuntimeSourceFrame
-            ? drawMantleFrameScaffold({
-                ctx: baseCtx,
-                card: input.card,
-                layout: cachedLayout.layout
-              })
-            : await drawMantleFrameSurface({
-                ctx: baseCtx,
-                card: input.card,
-                asset: input.asset,
-                sourceFrame: input.sourceFrame,
-                layout: cachedLayout.layout,
-                showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
-              });
+          cachedFrameSurface = renderFrameSurface
+            ? hasRuntimeSourceFrame
+              ? drawMantleFrameScaffold({
+                  ctx: baseCtx,
+                  card: input.card,
+                  layout: cachedLayout.layout
+                })
+              : await drawMantleFrameSurface({
+                  ctx: baseCtx,
+                  card: input.card,
+                  asset: input.asset,
+                  sourceFrame: input.sourceFrame,
+                  layout: cachedLayout.layout,
+                  showEmptyPlaceholderText: input.showEmptyPlaceholderText ?? true
+                })
+            : undefined;
           baseLayer.key = frameScaffoldKey;
         } finally {
           baseCtx.restore();
         }
       }
 
-      const contentRect = cachedFrameSurface?.contentRect ?? cachedLayout.layout.imageRect;
+      const fallbackFrameRect = renderFrameSurface
+        ? cachedLayout.layout.imageRect
+        : cachedLayout.layout.canvasRect;
+      const fallbackBaseFrameRect = renderFrameSurface
+        ? cachedLayout.layout.baseImageRect
+        : cachedLayout.layout.canvasRect;
+      const fallbackFrameRotation = renderFrameSurface
+        ? cachedLayout.layout.frameRotation
+        : 0;
+      const contentRect = cachedFrameSurface?.contentRect ?? fallbackFrameRect;
       const contentRadius =
-        cachedFrameSurface?.contentRadius ?? cachedLayout.layout.cornerRadius;
+        cachedFrameSurface?.contentRadius ??
+        (renderFrameSurface ? cachedLayout.layout.cornerRadius : 0);
       const contentCornerStyle = cachedFrameSurface?.contentCornerStyle ?? 'all';
-      const frameRect = cachedFrameSurface?.frameRect ?? cachedLayout.layout.imageRect;
+      const frameRect = cachedFrameSurface?.frameRect ?? fallbackFrameRect;
       const baseFrameRect =
-        cachedFrameSurface?.baseFrameRect ?? cachedLayout.layout.baseImageRect;
+        cachedFrameSurface?.baseFrameRect ?? fallbackBaseFrameRect;
       const frameRotation =
-        cachedFrameSurface?.frameRotation ?? cachedLayout.layout.frameRotation;
+        cachedFrameSurface?.frameRotation ?? fallbackFrameRotation;
       const textRect = textRectFromLayout(cachedLayout.layout);
       const textRotation = cachedLayout.layout.textDraw?.rotation ?? 0;
       const textLayerRects = textLayerRectsFromLayout(cachedLayout.layout);

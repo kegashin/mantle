@@ -142,10 +142,12 @@ export const symbolWave: BackgroundGenerator = ({
   params,
   seed,
   renderMode,
+  timeMs,
   scale
 }) => {
   const rng = createRng(`symbol-wave::${seed}`);
   const seedInt = seedToInt(`symbol-wave::${seed}`);
+  const time = timeMs / 1000;
   const glyphAmount = readBackgroundParam(params, 'glyphAmount', 0.62);
   const waveHeight = readBackgroundParam(params, 'waveHeight', 0.58);
   const glow = readBackgroundParam(params, 'glow', 0.84);
@@ -181,9 +183,10 @@ export const symbolWave: BackgroundGenerator = ({
   const ridgeWidth = rect.height * (0.032 + waveHeight * 0.052);
   const haloWidth = ridgeWidth * (2.7 + glow * 0.9);
   const centerY = rect.y + rect.height * (0.5 + (rng() - 0.5) * 0.1);
-  const phaseA = rng() * TWO_PI;
-  const phaseB = rng() * TWO_PI;
-  const phaseC = rng() * TWO_PI;
+  const flow = time * (0.28 + glyphAmount * 0.22 + waveHeight * 0.1);
+  const phaseA = rng() * TWO_PI + flow;
+  const phaseB = rng() * TWO_PI - flow * 0.72;
+  const phaseC = rng() * TWO_PI + flow * 0.38;
   const tilt = (rng() - 0.5) * rect.height * 0.28;
   const clusterA = 0.18 + rng() * 0.28;
   const clusterB = 0.56 + rng() * 0.25;

@@ -104,4 +104,24 @@ describe('resolveMantleRenderSize', () => {
 
     expect(resolveMantleExportFileName(card, asset)).toBe('source.gif');
   });
+
+  it('resolves mp4 export filenames', () => {
+    const card = createMantleCard({
+      sourceAssetId: 'asset-source'
+    });
+    card.export = {
+      ...card.export,
+      format: 'mp4'
+    };
+    const asset = {
+      id: 'asset-source',
+      role: 'screenshot',
+      name: 'source.webm',
+      width: 1200,
+      height: 800,
+      objectUrl: 'blob:mantle-source'
+    } as const;
+
+    expect(resolveMantleExportFileName(card, asset)).toBe('source.mp4');
+  });
 });

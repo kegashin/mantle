@@ -95,6 +95,14 @@ export type MantleBackgroundParams = Partial<
   Record<MantleBackgroundParamId, number>
 >;
 
+export const MANTLE_BACKGROUND_ANIMATION_SPEED_MIN = 0.25;
+export const MANTLE_BACKGROUND_ANIMATION_SPEED_MAX = 2;
+export const MANTLE_BACKGROUND_ANIMATION_SPEED_DEFAULT = 1;
+
+export type MantleBackgroundAnimation = {
+  speed?: number | undefined;
+};
+
 export const MANTLE_BACKGROUND_PRESET_FAMILY: Record<
   MantleBackgroundPresetId,
   MantleBackgroundFamily
@@ -126,6 +134,7 @@ export type MantleBackground = {
   seed: string;
   intensity: number;
   params?: MantleBackgroundParams | undefined;
+  animation?: MantleBackgroundAnimation | undefined;
   palette: MantlePalette;
   colors?: MantleHexColor[] | undefined;
   imageAssetId?: string | undefined;
@@ -139,7 +148,7 @@ export type MantleBrand = {
   logoAssetId?: string | undefined;
 };
 
-export const MANTLE_EXPORT_FORMATS = ['png', 'jpeg', 'webp', 'gif', 'webm'] as const;
+export const MANTLE_EXPORT_FORMATS = ['png', 'jpeg', 'webp', 'gif', 'webm', 'mp4'] as const;
 export type MantleExportFormat = (typeof MANTLE_EXPORT_FORMATS)[number];
 
 export type MantleExportSettings = {
@@ -155,6 +164,7 @@ export type MantleExportSettings = {
   videoDurationMs?: number | undefined;
   videoFrameRate?: number | undefined;
   videoBitrateMbps?: number | undefined;
+  audioEnabled?: boolean | undefined;
   animateBackground?: boolean | undefined;
   fileName?: string | undefined;
 };

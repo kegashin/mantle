@@ -18,6 +18,7 @@ const SIGNAL_FIELD_FRAGMENT_SHADER = `
   uniform vec4 uParams;
   uniform float uSeed;
   uniform float uIntensity;
+  uniform float uTime;
 
   float softSignal(float field, float width) {
     return width / max(abs(field), width * 0.72);
@@ -33,10 +34,16 @@ const SIGNAL_FIELD_FRAGMENT_SHADER = `
 
     vec3 base = mix(uColor0, vec3(0.0), 0.55 + glow * 0.14);
     vec3 signal = vec3(0.0);
+    vec3 rails = vec3(0.0);
     float spacing = mix(0.31, 0.13, density);
     float lineWidth = mix(0.0018, 0.0085, thickness);
-    float diagonal = mod(uv.x + uv.y + sin(seed) * 0.18, spacing);
-    float phase = seed * 0.17 + density * 0.36;
+    float diagonal = mod(
+      uv.x + uv.y + sin(seed) * 0.18 - uTime * mix(0.08, 0.18, density),
+      spacing
+    );
+    float rail = clamp(softSignal(diagonal - spacing * 0.48, lineWidth * 1.35), 0.0, 1.8);
+    rails += mix(uColor2, uColor3, smoothstep(-1.0, 1.0, uv.x - uv.y)) * rail * (0.025 + glow * 0.075);
+    float phase = seed * 0.17 + density * 0.36 + uTime * (0.045 + glow * 0.035);
 
     for (int channel = 0; channel < 3; channel++) {
       float fc = float(channel);
@@ -46,10 +53,10 @@ const SIGNAL_FIELD_FRAGMENT_SHADER = `
         float fb = float(band);
         float target = fract(phase - 0.012 * fc + fb * 0.017) * mix(2.0, 3.3, density);
         float wobble =
-          sin(uv.x * (2.1 + fb * 0.23) + seed + fb) * 0.032 +
-          sin(uv.y * (2.6 + fb * 0.17) - seed * 0.7 + fc) * 0.024;
+          sin(uv.x * (2.1 + fb * 0.23) + seed + fb + uTime * 0.24) * 0.032 +
+          sin(uv.y * (2.6 + fb * 0.17) - seed * 0.7 + fc - uTime * 0.18) * 0.024;
         float field = target - radius + diagonal + wobble + chroma;
-        float energy = softSignal(field, lineWidth) * fb * fb * 0.034;
+        float energy = softSignal(field, lineWidth) * fb * fb * 0.046;
         signal[channel] += energy;
       }
     }
@@ -60,10 +67,11 @@ const SIGNAL_FIELD_FRAGMENT_SHADER = `
       signal.b * uColor3;
     vec3 color =
       base +
-      tint * (0.92 + glow * 2.8) * (0.58 + uIntensity * 1.05);
+      rails +
+      tint * (1.08 + glow * 3.35) * (0.58 + uIntensity * 1.08);
 
     // Broader halo keeps the line core from collapsing into a single tight band.
-    float haloCore = exp(-pow((radius - (0.62 + sin(seed) * 0.12)) / 0.36, 2.0));
+    float haloCore = exp(-pow((radius - (0.62 + sin(seed + uTime * 0.42) * 0.12)) / 0.36, 2.0));
     float haloTail = exp(-pow((radius - 0.92) / 0.7, 2.0)) * 0.32;
     float halo = haloCore + haloTail;
     color += mix(uColor2, uColor3, smoothstep(-0.7, 0.9, uv.x - uv.y)) * halo * glow * 0.42;
@@ -221,7 +229,7 @@ async function drawShaderVersion({
     intensity,
     scale,
     timeMs,
-    shaderKey: 'signal-field-v2',
+    shaderKey: 'signal-field-v4',
     fragmentShader: SIGNAL_FIELD_FRAGMENT_SHADER
   });
 }
@@ -254,14 +262,19 @@ export const signalField: BackgroundGenerator = async ({
   }
 
   const rng = createRng(`signal-field::${seed}`);
+  const time = timeMs / 1000;
   const lineDensity = readBackgroundParam(params, 'lineDensity', intensity);
   const thickness = readBackgroundParam(params, 'thickness', 0.34);
   const glow = readBackgroundParam(params, 'glow', 0.82);
   const isPreview = renderMode === 'preview';
   const strength = clamp01(intensity || 0.76);
+  const shortSide = Math.min(rect.width, rect.height);
   const centerX = rect.x + rect.width * (0.47 + (rng() - 0.5) * 0.12);
   const centerY = rect.y + rect.height * (0.5 + (rng() - 0.5) * 0.12);
-  const shortSide = Math.min(rect.width, rect.height);
+  const driftedCenterX =
+    centerX + Math.sin(time * 0.24 + lineDensity) * shortSide * 0.018;
+  const driftedCenterY =
+    centerY + Math.cos(time * 0.2 + glow) * shortSide * 0.015;
   const maxRadius = Math.hypot(rect.width, rect.height) * 0.72;
   const bandCount = Math.round((16 + lineDensity * 34) * (isPreview ? 0.72 : 1));
   const baseStep = maxRadius / Math.max(1, bandCount);
@@ -302,11 +315,15 @@ export const signalField: BackgroundGenerator = async ({
       ctx.globalAlpha = alpha;
       drawDistortedBand({
         ctx,
-        centerX: centerX + channelOffset,
-        centerY: centerY - channelOffset * 0.55,
+        centerX: driftedCenterX + channelOffset,
+        centerY: driftedCenterY - channelOffset * 0.55,
         radius,
         amplitude: shortSide * (0.01 + lineDensity * 0.015) * (0.5 + normalized),
-        phase: rng() * TWO_PI + channel * 0.9,
+        phase:
+          rng() * TWO_PI +
+          channel * 0.9 +
+          time * (0.28 + lineDensity * 0.12) +
+          band * 0.009,
         aspect: 1 + Math.sin(channel + 0.5) * 0.08,
         steps: isPreview ? 96 : 168
       });
@@ -316,8 +333,8 @@ export const signalField: BackgroundGenerator = async ({
   ctx.globalAlpha = 1;
   ctx.shadowBlur = 0;
   const vignette = ctx.createRadialGradient(
-    centerX,
-    centerY,
+    driftedCenterX,
+    driftedCenterY,
     shortSide * 0.2,
     centerX,
     centerY,

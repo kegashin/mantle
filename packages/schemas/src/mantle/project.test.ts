@@ -26,10 +26,12 @@ describe('MantleProjectSchema', () => {
     const card = createMantleCard();
     card.export = {
       ...card.export,
-      fileName: 'launch-update'
+      fileName: 'launch-update',
+      audioEnabled: false
     };
 
     expect(MantleCardSchema.parse(card).export.fileName).toBe('launch-update');
+    expect(MantleCardSchema.parse(card).export.audioEnabled).toBe(false);
   });
 
   it('accepts focus and zoom source placement for responsive frame resizing', () => {
@@ -168,21 +170,14 @@ describe('MantleProjectSchema', () => {
     const firstCard = createMantleCard();
     const secondCard = createMantleCard();
 
-    firstCard.background.params!.complexity = 0.11;
+    firstCard.background.params!.details = 0.11;
     firstCard.background.palette.background = '#ffffff';
     firstCard.frame.padding = 12;
 
-    expect(secondCard.background.params?.complexity).toBe(1);
-    expect(secondCard.background.colors).toEqual([
-      '#050505',
-      '#f5f5f5',
-      '#252525',
-      '#d8d8d8',
-      '#737373',
-      '#ffffff'
-    ]);
-    expect(secondCard.background.palette.background).toBe('#050505');
-    expect(secondCard.frame.padding).toBe(96);
+    expect(secondCard.background.params?.details).toBe(0.68);
+    expect(secondCard.background.colors).toBeUndefined();
+    expect(secondCard.background.palette.background).toBe('#060609');
+    expect(secondCard.frame.padding).toBe(116);
 
     const firstProject = createMantleProject();
     const secondProject = createMantleProject();
@@ -190,7 +185,7 @@ describe('MantleProjectSchema', () => {
     firstProject.brand.palette.background = '#ffffff';
 
     expect(secondProject.targets[0]?.width).toBe(DEFAULT_MANTLE_TARGETS[0]?.width);
-    expect(secondProject.brand.palette.background).toBe('#050505');
+    expect(secondProject.brand.palette.background).toBe('#060609');
   });
 
   it('rejects missing text objects and font ids instead of schema defaults', () => {
@@ -276,6 +271,33 @@ describe('MantleProjectSchema', () => {
           ...card.background,
           params: {
             curve: 4.2
+          }
+        }
+      })
+    ).toThrow();
+  });
+
+  it('accepts bounded background animation speed settings', () => {
+    const card = createMantleCard();
+
+    const parsed = MantleCardSchema.parse({
+      ...card,
+      background: {
+        ...card.background,
+        animation: {
+          speed: 1.35
+        }
+      }
+    });
+
+    expect(parsed.background.animation?.speed).toBe(1.35);
+    expect(() =>
+      MantleCardSchema.parse({
+        ...card,
+        background: {
+          ...card.background,
+          animation: {
+            speed: 2.5
           }
         }
       })
@@ -608,6 +630,36 @@ describe('MantleProjectSchema', () => {
     expect(parsed.export.videoDurationMs).toBe(4200);
     expect(parsed.export.videoFrameRate).toBe(24);
     expect(parsed.export.videoBitrateMbps).toBe(8);
+    expect(parsed.export.animateBackground).toBe(false);
+  });
+
+  it('accepts mp4 export settings', () => {
+    const card = createMantleCard();
+
+    const parsed = MantleCardSchema.parse({
+      ...card,
+      export: {
+        ...card.export,
+        format: 'mp4',
+        videoStartMs: 1200,
+        videoEndMs: 5400,
+        videoLoop: true,
+        videoDurationMs: 4200,
+        videoFrameRate: 24,
+        videoBitrateMbps: 8,
+        audioEnabled: true,
+        animateBackground: false
+      }
+    });
+
+    expect(parsed.export.format).toBe('mp4');
+    expect(parsed.export.videoStartMs).toBe(1200);
+    expect(parsed.export.videoEndMs).toBe(5400);
+    expect(parsed.export.videoLoop).toBe(true);
+    expect(parsed.export.videoDurationMs).toBe(4200);
+    expect(parsed.export.videoFrameRate).toBe(24);
+    expect(parsed.export.videoBitrateMbps).toBe(8);
+    expect(parsed.export.audioEnabled).toBe(true);
     expect(parsed.export.animateBackground).toBe(false);
   });
 

@@ -28,7 +28,10 @@ export type MantleMotionExportPlan = {
   frameRate: number;
   frameCount: number;
   scale: number;
+  width: number;
+  height: number;
   pixelCount: number;
+  totalFramePixels: number;
 };
 
 type MotionExportPlanOptions = {
@@ -38,6 +41,7 @@ type MotionExportPlanOptions = {
   maxFrameRate: number;
   maxFrames: number;
   maxPixelCount: number;
+  maxTotalFramePixels?: number | undefined;
   minFrameRate: number;
   requestedDurationMs?: number | undefined;
   label: string;
@@ -50,9 +54,8 @@ export function clampNumber(value: number, min: number, max: number): number {
 }
 
 export function throwIfMotionExportAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw new DOMException('Export canceled.', 'AbortError');
-  }
+  signal?.throwIfAborted?.();
+  if (signal?.aborted) throw new DOMException('Export canceled.', 'AbortError');
 }
 
 export function reportMotionProgress(
@@ -63,6 +66,10 @@ export function reportMotionProgress(
     ...progress,
     progress: clampNumber(progress.progress, 0, 1)
   });
+}
+
+function formatNumber(value: number): string {
+  return Math.round(value).toLocaleString('en-US');
 }
 
 function resolveMotionClipRange(
@@ -119,9 +126,10 @@ export function createMantleMotionExportPlan(
   const frameIntervalMs = 1000 / frameRate;
   const frameCount = Math.max(2, Math.ceil(durationMs / frameIntervalMs));
   const scale = input.scale ?? input.card.export.scale;
-  const pixelCount = Math.round(
-    input.target.width * scale * input.target.height * scale
-  );
+  const width = Math.round(input.target.width * scale);
+  const height = Math.round(input.target.height * scale);
+  const pixelCount = width * height;
+  const totalFramePixels = pixelCount * frameCount;
 
   if (pixelCount > options.maxPixelCount) {
     throw new Error(
@@ -135,6 +143,15 @@ export function createMantleMotionExportPlan(
     );
   }
 
+  if (
+    options.maxTotalFramePixels != null &&
+    totalFramePixels > options.maxTotalFramePixels
+  ) {
+    throw new Error(
+      `${options.label} export is too heavy. It would render ${formatNumber(frameCount)} frames at ${formatNumber(width)} × ${formatNumber(height)}. Trim the clip, lower FPS, or reduce Scale.`
+    );
+  }
+
   return {
     startMs,
     endMs,
@@ -142,21 +159,27 @@ export function createMantleMotionExportPlan(
     frameRate,
     frameCount,
     scale,
-    pixelCount
+    width,
+    height,
+    pixelCount,
+    totalFramePixels
   };
 }
 
 function waitForVideoEvent(
   video: HTMLVideoElement,
-  eventName: keyof HTMLMediaElementEventMap
+  eventName: keyof HTMLMediaElementEventMap,
+  signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    throwIfMotionExportAborted(signal);
     let timeoutId = 0;
 
     const cleanup = () => {
       window.clearTimeout(timeoutId);
       video.removeEventListener(eventName, handleEvent);
       video.removeEventListener('error', handleError);
+      signal?.removeEventListener('abort', handleAbort);
     };
     const handleEvent = () => {
       cleanup();
@@ -166,6 +189,10 @@ function waitForVideoEvent(
       cleanup();
       reject(new Error('Video source could not be decoded for export.'));
     };
+    const handleAbort = () => {
+      cleanup();
+      reject(new DOMException('Export canceled.', 'AbortError'));
+    };
 
     timeoutId = window.setTimeout(() => {
       cleanup();
@@ -174,12 +201,15 @@ function waitForVideoEvent(
 
     video.addEventListener(eventName, handleEvent, { once: true });
     video.addEventListener('error', handleError, { once: true });
+    signal?.addEventListener('abort', handleAbort, { once: true });
   });
 }
 
 export async function createMotionVideoDecoder(
-  asset: MantleRenderableAsset
+  asset: MantleRenderableAsset,
+  signal?: AbortSignal
 ): Promise<HTMLVideoElement> {
+  throwIfMotionExportAborted(signal);
   if (!asset.objectUrl) {
     throw new Error('Relink the local video before exporting.');
   }
@@ -192,16 +222,19 @@ export async function createMotionVideoDecoder(
   video.load();
 
   if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
-    await waitForVideoEvent(video, 'loadedmetadata');
+    await waitForVideoEvent(video, 'loadedmetadata', signal);
   }
 
+  throwIfMotionExportAborted(signal);
   return video;
 }
 
 export async function seekMotionVideoFrame(
   video: HTMLVideoElement,
-  timeMs: number
+  timeMs: number,
+  signal?: AbortSignal
 ): Promise<void> {
+  throwIfMotionExportAborted(signal);
   const durationMs = Number.isFinite(video.duration) ? video.duration * 1000 : timeMs;
   const targetSeconds = clampNumber(timeMs, 0, durationMs) / 1000;
   const sameTime = Math.abs(video.currentTime - targetSeconds) < 0.002;
@@ -211,17 +244,18 @@ export async function seekMotionVideoFrame(
   }
 
   if (sameTime) {
-    await waitForVideoEvent(video, 'loadeddata');
+    await waitForVideoEvent(video, 'loadeddata', signal);
     return;
   }
 
-  const seeked = waitForVideoEvent(video, 'seeked');
+  const seeked = waitForVideoEvent(video, 'seeked', signal);
   video.currentTime = targetSeconds;
   await seeked;
 
   if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    await waitForVideoEvent(video, 'loadeddata');
+    await waitForVideoEvent(video, 'loadeddata', signal);
   }
+  throwIfMotionExportAborted(signal);
 }
 
 export async function renderMantleMotionFrame({
@@ -235,9 +269,11 @@ export async function renderMantleMotionFrame({
   video?: HTMLVideoElement | undefined;
   timeMs: number;
 }): Promise<void> {
+  throwIfMotionExportAborted(input.signal);
   if (video) {
-    await seekMotionVideoFrame(video, timeMs);
+    await seekMotionVideoFrame(video, timeMs, input.signal);
   }
+  throwIfMotionExportAborted(input.signal);
 
   const backgroundTimeMs = input.card.export.animateBackground === false ? 0 : timeMs;
 
@@ -261,4 +297,5 @@ export async function renderMantleMotionFrame({
     renderMode: 'export',
     showEmptyPlaceholderText: Boolean(input.asset)
   });
+  throwIfMotionExportAborted(input.signal);
 }

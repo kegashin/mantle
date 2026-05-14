@@ -27,6 +27,7 @@ const DEFAULT_GIF_DURATION_MS = 3000;
 const DEFAULT_GIF_FRAME_RATE = 12;
 const GIF_EXPORT_MAX_DURATION_MS = 30000;
 const GIF_EXPORT_MAX_FRAMES = 240;
+const GIF_EXPORT_MAX_TOTAL_FRAME_PIXELS = 240_000_000;
 
 function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength);
@@ -42,6 +43,27 @@ function getReadableCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingCon
   return context;
 }
 
+function yieldToBrowser(signal?: AbortSignal): Promise<void> {
+  throwIfMotionExportAborted(signal);
+  return new Promise((resolve, reject) => {
+    let timeoutId = 0;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', handleAbort);
+    };
+    const handleAbort = () => {
+      cleanup();
+      reject(new DOMException('Export canceled.', 'AbortError'));
+    };
+
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, 0);
+    signal?.addEventListener('abort', handleAbort, { once: true });
+  });
+}
+
 export function createMantleGifExportPlan(
   input: MantleGifExportInput
 ): MantleGifExportPlan {
@@ -53,6 +75,7 @@ export function createMantleGifExportPlan(
     maxFrameRate: 24,
     maxFrames: GIF_EXPORT_MAX_FRAMES,
     maxPixelCount: MAX_ANIMATED_GIF_PIXELS,
+    maxTotalFramePixels: GIF_EXPORT_MAX_TOTAL_FRAME_PIXELS,
     minFrameRate: 6,
     requestedDurationMs: input.card.export.gifDurationMs
   });
@@ -79,7 +102,7 @@ export async function exportMantleGif(
   });
   const video =
     input.asset?.mediaKind === 'video'
-      ? await createMotionVideoDecoder(input.asset)
+      ? await createMotionVideoDecoder(input.asset, input.signal)
       : undefined;
   let encoder: ReturnType<typeof createAnimatedGifEncoder> | undefined;
 
@@ -106,15 +129,16 @@ export async function exportMantleGif(
 
       reportMotionProgress(input, {
         phase: 'rendering',
-        progress: (index + 1) / frameCount,
+        progress: ((index + 1) / frameCount) * 0.96,
         detail: `Rendering GIF frame ${index + 1} of ${frameCount}`
       });
+      await yieldToBrowser(input.signal);
     }
 
     throwIfMotionExportAborted(input.signal);
     reportMotionProgress(input, {
       phase: 'finalizing',
-      progress: 1,
+      progress: 0.98,
       detail: 'Encoding GIF'
     });
 
@@ -123,6 +147,11 @@ export async function exportMantleGif(
     }
 
     const gifBytes = encoder.finish();
+    reportMotionProgress(input, {
+      phase: 'finalizing',
+      progress: 1,
+      detail: 'Preparing download'
+    });
     return {
       blob: new Blob([bytesToArrayBuffer(gifBytes)], { type: mimeType }),
       filename: resolveMantleExportFileName(input.card, input.asset),

@@ -134,9 +134,11 @@ export const fallingPattern: BackgroundGenerator = ({
   params,
   seed,
   renderMode,
+  timeMs,
   scale
 }) => {
   const rng = createRng(`falling-pattern::${seed}`);
+  const time = timeMs / 1000;
   const glyphDensity = readBackgroundParam(params, 'glyphDensity', 0.52);
   const trail = readBackgroundParam(params, 'sweepGlow', 0.62);
   const glow = readBackgroundParam(params, 'glow', intensity);
@@ -146,6 +148,8 @@ export const fallingPattern: BackgroundGenerator = ({
   const stepY = fontSize * (1.16 + (1 - glyphDensity) * 0.18);
   const trailCount = Math.round(5 + trail * 18);
   const columnCount = Math.ceil(rect.width / columnWidth) + 2;
+  const loopHeight = rect.height + stepY * (trailCount + 2);
+  const fallSpeed = stepY * (2.4 + glyphDensity * 3.2 + trail * 1.6);
 
   drawBase(ctx, rect, palette.background, palette.accent, glow);
 
@@ -158,8 +162,12 @@ export const fallingPattern: BackgroundGenerator = ({
   for (let column = -1; column < columnCount; column += 1) {
     if (preview && column % 2 === 1 && glyphDensity < 0.38) continue;
     const x = rect.x + column * columnWidth + rng() * columnWidth * 0.72;
-    const lanePhase = rng() * rect.height;
-    const headY = rect.y + ((lanePhase + rect.height * (0.2 + rng() * 0.86)) % (rect.height + stepY * trailCount));
+    const lanePhase = rng() * loopHeight;
+    const laneSpeed = fallSpeed * (0.72 + rng() * 0.56);
+    const headY =
+      rect.y -
+      stepY +
+      ((lanePhase + time * laneSpeed) % loopHeight);
     const brightness = 0.58 + rng() * 0.42;
 
     if (rng() > 0.34) {
@@ -182,7 +190,7 @@ export const fallingPattern: BackgroundGenerator = ({
       stepY,
       trailCount,
       fontSize,
-      seedOffset: Math.floor(rng() * 1000),
+      seedOffset: Math.floor(rng() * 1000 + time * (2.5 + glyphDensity * 5)),
       coreColor: palette.foreground,
       trailColor: palette.accent,
       glowColor: mixHex(palette.accent, palette.foreground, 0.24),

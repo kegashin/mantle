@@ -412,8 +412,12 @@ const REGISTRY: Record<BackgroundPresetId, BackgroundGenerator> = {
 
 const ANIMATED_BACKGROUND_PRESET_IDS = new Set<BackgroundPresetId>([
   'aurora-gradient',
+  'falling-pattern',
   'marbling',
-  'smoke-veil'
+  'signal-field',
+  'smoke-veil',
+  'symbol-wave',
+  'terminal-scanline'
 ]);
 
 const PRESETS_BY_ID = new Map<BackgroundPresetId, BackgroundPresetDescriptor>(

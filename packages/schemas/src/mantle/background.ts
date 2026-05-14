@@ -6,6 +6,8 @@ import {
 } from './palette';
 import {
   MANTLE_BACKGROUND_COLOR_PRESET_IDS,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MAX,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MIN,
   MANTLE_BACKGROUND_FAMILIES,
   MANTLE_BACKGROUND_PARAM_IDS,
   MANTLE_BACKGROUND_PRESET_FAMILY,
@@ -16,6 +18,9 @@ import type {
   MantleBackgroundPresetId
 } from './model';
 export {
+  MANTLE_BACKGROUND_ANIMATION_SPEED_DEFAULT,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MAX,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MIN,
   MANTLE_BACKGROUND_COLOR_PRESET_IDS,
   MANTLE_BACKGROUND_FAMILIES,
   MANTLE_BACKGROUND_PARAM_IDS,
@@ -24,6 +29,7 @@ export {
 } from './model';
 export type {
   MantleBackground,
+  MantleBackgroundAnimation,
   MantleBackgroundFamily,
   MantleBackgroundParamId,
   MantleBackgroundParams,
@@ -39,6 +45,14 @@ export const MantleBackgroundPresetIdSchema = z.enum(
 export const MantleBackgroundParamIdSchema = z.enum(
   MANTLE_BACKGROUND_PARAM_IDS
 );
+
+export const MantleBackgroundAnimationSchema = z.object({
+  speed: z
+    .number()
+    .min(MANTLE_BACKGROUND_ANIMATION_SPEED_MIN)
+    .max(MANTLE_BACKGROUND_ANIMATION_SPEED_MAX)
+    .optional()
+}).strict();
 
 const MANTLE_BACKGROUND_PARAM_MAX: Record<
   MantleBackgroundPresetId,
@@ -108,6 +122,7 @@ export const MantleBackgroundSchema = z.object({
   params: z
     .partialRecord(MantleBackgroundParamIdSchema, z.number().min(0).max(4))
     .optional(),
+  animation: MantleBackgroundAnimationSchema.optional(),
   palette: MantlePaletteSchema,
   colors: z.array(MantleHexColorSchema).min(2).max(6).optional(),
   imageAssetId: z.string().min(1).optional()
