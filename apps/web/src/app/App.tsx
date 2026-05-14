@@ -719,6 +719,14 @@ function PresetThumbnail({
 }) {
   const thumbnailUrl =
     thumbnail?.status === 'ready' ? thumbnail.url : undefined;
+  const hasThumbnailFallback = !thumbnailUrl && variant === 'image';
+  const thumbnailClassName = [
+    styles.presetThumbnail,
+    variant === 'image' ? styles.presetThumbnailImage : '',
+    !thumbnailUrl && variant === 'style' ? styles.presetThumbnailEmpty : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
   const thumbnailStyle: PresetThumbnailStyle = {
     '--preset-thumbnail-background': palette?.background ?? '#101015',
     '--preset-thumbnail-foreground': palette?.foreground ?? '#f6f5f2',
@@ -727,11 +735,7 @@ function PresetThumbnail({
 
   return (
     <span
-      className={
-        variant === 'image'
-          ? `${styles.presetThumbnail} ${styles.presetThumbnailImage}`
-          : styles.presetThumbnail
-      }
+      className={thumbnailClassName}
       style={thumbnailStyle}
       data-testid={presetId ? `style-thumbnail-${presetId}` : undefined}
       data-thumbnail-status={thumbnailUrl ? 'ready' : (thumbnail?.status ?? 'idle')}
@@ -740,15 +744,13 @@ function PresetThumbnail({
     >
       {thumbnailUrl ? (
         <img src={thumbnailUrl} alt="" decoding="async" draggable="false" />
-      ) : (
+      ) : hasThumbnailFallback ? (
         <span className={styles.presetThumbnailFallback}>
-          {variant === 'image' ? (
-            <span className={styles.presetThumbnailImageIcon}>
-              <Icon name="image" size={16} aria-hidden="true" />
-            </span>
-          ) : null}
+          <span className={styles.presetThumbnailImageIcon}>
+            <Icon name="image" size={16} aria-hidden="true" />
+          </span>
         </span>
-      )}
+      ) : null}
     </span>
   );
 }

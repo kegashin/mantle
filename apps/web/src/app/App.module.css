@@ -1192,12 +1192,19 @@
   background: rgba(255, 255, 255, 0.035);
 }
 
+.presetThumbnailEmpty {
+  background: transparent;
+  box-shadow: none;
+}
+
+.presetThumbnailEmpty::after {
+  content: none;
+}
+
 .presetThumbnailFallback {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 42%),
-    linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.22));
+  background: none;
 }
 
 .presetThumbnailImage .presetThumbnailFallback {
