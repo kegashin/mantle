@@ -2,42 +2,47 @@
 
 Mantle is a browser-first image composer for builders, founders, and content creators.
 
-Import a screenshot or image, choose a visual system, tune the frame, background, text, and export settings, then copy or download a polished visual for social posts, launches, app stores, docs, or product updates.
+Import a screenshot, image, or video, choose a visual system, tune the frame, background, text, and export settings, then copy or download a polished visual for social posts, launches, app stores, docs, or product updates.
 
 Live app: [mantle.kegashin.me](https://mantle.kegashin.me)
 
 > Status: early v0. Mantle is usable, but project files, preset files, and internal package APIs may still change.
 
-![Mantle editor with a marbling backdrop, screenshot frame, and style inspector](./assets/readme/mantle-editor.png)
+![Mantle editor with a smoke veil backdrop, glowing screenshot frame, and style inspector](./assets/readme/mantle-editor.png)
 
 ## Features
 
-- Drag, paste, or pick PNG, JPEG, and WebP source images.
+- Drag, paste, or pick PNG, JPEG, WebP, MP4, MOV, and WebM source media.
 - Compose visuals for social posts, launch assets, app stores, docs, and product updates.
+- First-open Smoke Veil demo look with a white glass frame and soft glow for screenshots and video captures.
 - Built-in styles for solid color, gradients, marbling, smoke, glyph fields, scanlines, contour lines, and dot grids.
 - Optional custom backdrop images.
 - Browser, macOS, Windows, terminal, code editor, document, and frameless presentations.
 - Solid and glass frame surfaces with spacing, corner, shadow, and chrome controls.
 - Non-destructive stage editing for image placement, frame placement, text placement, scale, crop, and rotation.
+- Motion preview and trim controls for video sources and generated animated backdrops.
 - Optional title and subtitle text around the screenshot.
-- Saved style presets stored in the browser, with JSON import and export.
-- PNG, JPEG, and WebP downloads.
+- Saved style presets stored in the browser, with JSON load and export.
+- Lightweight style thumbnails with cached preview renders.
+- PNG, JPEG, WebP, GIF, MP4, and WebM downloads.
+- MP4 and WebM exports can include source-video audio, with a global audio toggle in export settings.
+- Export settings are grouped by format, size, motion, and quality, with progress, cancel, and heavy-export guardrails.
 - PNG copy-to-clipboard when the browser allows image clipboard writes.
-- Canvas-based preview and export through the same rendering pipeline.
+- Canvas-based preview and export paths that share the renderer model while staying separate for interactive preview and final output.
 
 ## Privacy Model
 
 Mantle does not include an upload backend or analytics code.
 
-Images are loaded in the browser as local `File`, `Blob`, and object URL data. Export happens client-side. Saved styles are stored in browser storage. If you deploy Mantle behind your own analytics, proxy, or hosting layer, that layer is separate from this repository.
+Images and videos are loaded in the browser as local `File`, `Blob`, and object URL data. Export happens client-side. Saved styles are stored in browser storage. If you deploy Mantle behind your own analytics, proxy, or hosting layer, that layer is separate from this repository.
 
-Project JSON files intentionally store image metadata, not the original image bytes. If you reopen a saved project later, relink the local source image before exporting.
+Project JSON files intentionally store media metadata, not the original image or video bytes. If you reopen a saved project later, relink the local source media before exporting.
 
 ## Browser Support
 
 Mantle targets modern desktop browsers. Small screens and touch-first devices show a desktop-only notice instead of the editor.
 
-Chromium-based browsers currently provide the smoothest image clipboard support. Safari and Firefox can use the editor and download exports, but image clipboard writes or some newer image codecs may be blocked by browser policy. Use Download when Copy PNG is unavailable.
+Chromium-based browsers currently provide the smoothest image clipboard and video recording support. Safari and Firefox can use the editor and image downloads, but image clipboard writes, MP4/WebM recording, source-video audio capture, or some newer codecs may be blocked by browser policy. Use Download when Copy PNG is unavailable, and choose GIF when browser video recording is unavailable.
 
 ## Run Locally
 
