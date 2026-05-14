@@ -370,7 +370,7 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
       {
         id: 'dotOpacity',
         label: 'Dot opacity',
-        defaultValue: 0.34,
+        defaultValue: 0.86,
         min: 0,
         max: 2,
         step: 0.01
@@ -378,7 +378,7 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
       {
         id: 'dotSize',
         label: 'Dot size',
-        defaultValue: 0.25,
+        defaultValue: 0.62,
         min: 0,
         max: 1,
         step: 0.01
@@ -386,7 +386,7 @@ export const BACKGROUND_PRESETS: BackgroundPresetDescriptor[] = [
       {
         id: 'dotDensity',
         label: 'Dot density',
-        defaultValue: 0.42,
+        defaultValue: 0.5,
         min: 0,
         max: 1,
         step: 0.01

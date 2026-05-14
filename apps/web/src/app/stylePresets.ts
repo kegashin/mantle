@@ -454,9 +454,9 @@ export const STYLE_PRESETS: StylePreset[] = [
       seed: 'dot-grid',
       intensity: 0.34,
       params: {
-        dotOpacity: 0.34,
-        dotSize: 0.25,
-        dotDensity: 0.42
+        dotOpacity: 0.86,
+        dotSize: 0.62,
+        dotDensity: 0.5
       },
       palette: {
         background: '#edefe9',
