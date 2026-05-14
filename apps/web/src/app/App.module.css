@@ -596,11 +596,11 @@
 
 .exportSliderInput {
   --export-slider-fill: 0%;
-  --export-slider-track-h: 6px;
-  --export-slider-thumb-w: 10px;
-  --export-slider-thumb-h: 24px;
-  --export-slider-track: var(--control-track);
-  --export-slider-thumb-glow: 0 0 0 0 rgba(246, 245, 242, 0);
+  --export-slider-track-h: 8px;
+  --export-slider-thumb-w: 12px;
+  --export-slider-thumb-h: 22px;
+  --export-slider-track: var(--depth-4-bg);
+  --export-slider-thumb-glow: 0 0 0 0 rgba(230, 181, 114, 0);
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
@@ -619,14 +619,15 @@
   background:
     linear-gradient(
       to right,
-      var(--control-fill) 0%,
-      var(--control-fill) var(--export-slider-fill),
+      var(--color-brand) 0%,
+      var(--color-brand) var(--export-slider-fill),
       var(--export-slider-track) var(--export-slider-fill),
       var(--export-slider-track) 100%
     );
   box-shadow:
-    inset 0 1px 0 rgba(0, 0, 0, 0.48),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+    inset 0 1px 2px rgba(0, 0, 0, 0.78),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.34),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 
 /* Track — Firefox */
@@ -635,14 +636,19 @@
   border-radius: var(--radius-pill);
   background: var(--export-slider-track);
   box-shadow:
-    inset 0 1px 0 rgba(0, 0, 0, 0.48),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+    inset 0 1px 2px rgba(0, 0, 0, 0.78),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.34),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .exportSliderInput::-moz-range-progress {
   height: var(--export-slider-track-h);
   border-radius: var(--radius-pill) 0 0 var(--radius-pill);
-  background: var(--control-fill);
+  background:
+    linear-gradient(180deg, var(--color-brand-strong), var(--color-brand));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(60, 30, 0, 0.2);
 }
 
 .exportSliderInput::-webkit-slider-thumb {
@@ -656,15 +662,23 @@
     linear-gradient(
       to right,
       transparent calc(50% - 0.5px),
-      rgba(5, 5, 7, 0.34) calc(50% - 0.5px) calc(50% + 0.5px),
+      rgba(60, 50, 40, 0.5) calc(50% - 0.5px) calc(50% + 0.5px),
       transparent calc(50% + 0.5px)
     ),
-    linear-gradient(180deg, #ffffff 0%, var(--control-fill-soft) 100%);
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.18) 0 1px,
+      transparent 1px calc(100% - 1px),
+      rgba(0, 0, 0, 0.18) calc(100% - 1px) 100%
+    ),
+    linear-gradient(180deg, #ffffff 0%, #ece8de 60%, #d0cabb 100%);
   margin-top: calc((var(--export-slider-track-h) - var(--export-slider-thumb-h)) / 2);
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 2px 5px -1px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 1px rgba(60, 50, 40, 0.22),
     var(--export-slider-thumb-glow);
   cursor: grab;
   transition:
@@ -681,14 +695,22 @@
     linear-gradient(
       to right,
       transparent calc(50% - 0.5px),
-      rgba(5, 5, 7, 0.34) calc(50% - 0.5px) calc(50% + 0.5px),
+      rgba(60, 50, 40, 0.5) calc(50% - 0.5px) calc(50% + 0.5px),
       transparent calc(50% + 0.5px)
     ),
-    linear-gradient(180deg, #ffffff 0%, var(--control-fill-soft) 100%);
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.18) 0 1px,
+      transparent 1px calc(100% - 1px),
+      rgba(0, 0, 0, 0.18) calc(100% - 1px) 100%
+    ),
+    linear-gradient(180deg, #ffffff 0%, #ece8de 60%, #d0cabb 100%);
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 2px 5px -1px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 1px rgba(60, 50, 40, 0.22),
     var(--export-slider-thumb-glow);
   cursor: grab;
   transition:
@@ -697,36 +719,33 @@
 }
 
 .exportSliderInput:hover {
-  --export-slider-track: var(--control-track-hover);
-  --export-slider-thumb-glow: var(--control-glow);
+  --export-slider-thumb-glow: 0 0 0 4px rgba(230, 181, 114, 0.18);
 }
 
 .exportSliderInput:hover::-webkit-slider-thumb {
-  transform: scaleX(1.14);
+  transform: scaleY(1.06);
 }
 
 .exportSliderInput:hover::-moz-range-thumb {
-  transform: scaleX(1.14);
+  transform: scaleY(1.06);
 }
 
 .exportSliderInput:focus-visible {
-  --export-slider-track: var(--control-track-hover);
-  --export-slider-thumb-glow: var(--control-glow-strong);
+  --export-slider-thumb-glow: 0 0 0 5px rgba(230, 181, 114, 0.28);
 }
 
 .exportSliderInput:active {
-  --export-slider-track: var(--control-track-hover);
-  --export-slider-thumb-glow: 0 0 0 7px rgba(246, 245, 242, 0.18);
+  --export-slider-thumb-glow: 0 0 0 7px rgba(230, 181, 114, 0.36);
 }
 
 .exportSliderInput:active::-webkit-slider-thumb {
   cursor: grabbing;
-  transform: scaleX(1.25);
+  transform: scaleY(1.1);
 }
 
 .exportSliderInput:active::-moz-range-thumb {
   cursor: grabbing;
-  transform: scaleX(1.25);
+  transform: scaleY(1.1);
 }
 
 .exportSummary {

@@ -34,10 +34,10 @@
   --elev-3: rgba(255, 255, 255, 0.075);
   --elev-4: rgba(255, 255, 255, 0.11);
 
-  /* Hairlines */
-  --color-hairline: rgba(255, 255, 255, 0.085);
-  --color-hairline-strong: rgba(255, 255, 255, 0.14);
-  --color-hairline-active: rgba(255, 255, 255, 0.24);
+  /* Hairlines — subtly warm cream, cohesive with brand palette */
+  --color-hairline: rgba(255, 244, 224, 0.09);
+  --color-hairline-strong: rgba(255, 244, 224, 0.15);
+  --color-hairline-active: rgba(255, 244, 224, 0.26);
 
   /* Text */
   --color-text: var(--paper-0);
@@ -60,18 +60,37 @@
   --color-danger: #e89090;
 
   /* Controls */
-  --control-bg: rgba(0, 0, 0, 0.22);
-  --control-bg-strong: rgba(0, 0, 0, 0.32);
-  --control-field-bg: rgba(0, 0, 0, 0.27);
-  --control-field-bg-hover: rgba(0, 0, 0, 0.32);
-  --control-field-bg-focus: rgba(0, 0, 0, 0.38);
+  --control-bg: rgba(0, 0, 0, 0.26);
+  --control-bg-strong: rgba(0, 0, 0, 0.36);
+  --control-field-bg: rgba(0, 0, 0, 0.38);
+  --control-field-bg-hover: rgba(0, 0, 0, 0.44);
+  --control-field-bg-focus: rgba(0, 0, 0, 0.5);
   --control-hover: rgba(255, 255, 255, 0.055);
   --control-active: rgba(246, 245, 242, 0.105);
   --control-active-strong: rgba(246, 245, 242, 0.16);
-  --control-track: rgba(255, 255, 255, 0.09);
-  --control-track-hover: rgba(255, 255, 255, 0.13);
-  --control-fill: var(--paper-0);
-  --control-fill-soft: var(--paper-1);
+  --control-track: rgba(0, 0, 0, 0.55);
+  --control-track-hover: rgba(0, 0, 0, 0.62);
+  --control-fill: var(--color-brand);
+  --control-fill-soft: var(--color-brand-strong);
+
+  /* Depth scale — each nested surface recedes deeper into the panel.
+     L1 sections → L2 control containers → L3 fields → L4 tracks (slider, etc). */
+  --depth-1-bg: rgba(0, 0, 0, 0.16);
+  --depth-1-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.32),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.025);
+  --depth-2-bg: rgba(0, 0, 0, 0.26);
+  --depth-2-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.46),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03);
+  --depth-3-bg: rgba(0, 0, 0, 0.36);
+  --depth-3-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.035);
+  --depth-4-bg: rgba(0, 0, 0, 0.5);
+  --depth-4-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.78),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
   --control-focus: rgba(230, 181, 114, 0.32);
   --control-glow: 0 0 0 4px rgba(230, 181, 114, 0.16);
   --control-glow-strong: 0 0 0 5px rgba(230, 181, 114, 0.26);
@@ -86,12 +105,12 @@
     0 1px 1px rgba(0, 0, 0, 0.45),
     0 12px 28px -20px rgba(0, 0, 0, 0.8);
   --control-inset-shadow:
-    inset 0 1px 1px rgba(0, 0, 0, 0.5),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 0 rgba(255, 255, 255, 0.026);
+    inset 0 1px 2px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 244, 224, 0.045);
   --control-field-shadow:
-    inset 0 1px 1px rgba(0, 0, 0, 0.56),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.028);
+    inset 0 1px 2px rgba(0, 0, 0, 0.66),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.18),
+    inset 0 -1px 0 rgba(255, 244, 224, 0.035);
 
   /* Radii */
   --radius-2xs: 6px;
