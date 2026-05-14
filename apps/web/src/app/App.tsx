@@ -48,9 +48,13 @@ import {
   type MantleGifExportProgress
 } from '../lib/exportGif';
 import {
+  createMantleMp4ExportPlan,
   createMantleWebMExportPlan,
+  exportMantleMp4,
   exportMantleWebM,
+  isMantleMp4Supported,
   isMantleWebMSupported,
+  type MantleMp4ExportProgress,
   type MantleWebMExportProgress
 } from '../lib/exportWebM';
 import { formatMediaDuration, formatPlaybackTime } from '../lib/formatMedia';
@@ -103,6 +107,11 @@ import {
   serializeUserStylePreset,
   type UserStylePreset
 } from './userPresets';
+import {
+  useStyleThumbnails,
+  type StyleThumbnailSource,
+  type StyleThumbnailState
+} from './styleThumbnails';
 
 const ACCEPTED_INPUT =
   'image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,.png,.jpg,.jpeg,.webp,.mp4,.mov,.webm';
@@ -159,8 +168,25 @@ type StageTimelineDragState = {
 };
 type CompositionMode = 'still' | 'motion';
 type PresetRailMode = 'built-in' | 'saved';
-type ExportProgressState = (MantleWebMExportProgress | MantleGifExportProgress) & {
+type ExportProgressState = (
+  MantleMp4ExportProgress |
+  MantleWebMExportProgress |
+  MantleGifExportProgress
+) & {
   canCancel: boolean;
+};
+type MotionExportFormat = Extract<MantleExportFormat, 'mp4' | 'webm' | 'gif'>;
+type MotionExportPreset = {
+  id: string;
+  format: MotionExportFormat;
+  label: string;
+  hint: string;
+  patch: Partial<MantleCard['export']>;
+};
+type ExportNotice = {
+  tone: 'warning' | 'error';
+  title: string;
+  detail: string;
 };
 type ProjectUpdater =
   | RuntimeMantleProject
@@ -194,6 +220,13 @@ type StyleRailItem =
       hint: string;
       kind: 'image';
     };
+type PresetThumbnailStyle = CSSProperties &
+  Record<
+    | '--preset-thumbnail-background'
+    | '--preset-thumbnail-foreground'
+    | '--preset-thumbnail-accent',
+    string
+  >;
 
 type MediaImportIntent =
   | { mode: 'auto' }
@@ -292,6 +325,22 @@ function canWriteClipboardImage(): boolean {
   return 'ClipboardItem' in window && Boolean(navigator.clipboard?.write);
 }
 
+function canRecordWebMExport(): boolean {
+  return (
+    typeof HTMLCanvasElement !== 'undefined' &&
+    'captureStream' in HTMLCanvasElement.prototype &&
+    isMantleWebMSupported()
+  );
+}
+
+function canRecordMp4Export(): boolean {
+  return (
+    typeof HTMLCanvasElement !== 'undefined' &&
+    'captureStream' in HTMLCanvasElement.prototype &&
+    isMantleMp4Supported()
+  );
+}
+
 const STILL_EXPORT_FORMAT_OPTIONS: Array<{ value: MantleExportFormat; label: string }> = [
   { value: 'png', label: 'PNG' },
   { value: 'jpeg', label: 'JPEG' },
@@ -299,6 +348,7 @@ const STILL_EXPORT_FORMAT_OPTIONS: Array<{ value: MantleExportFormat; label: str
   { value: 'gif', label: 'GIF' }
 ];
 const MOTION_EXPORT_FORMAT_OPTIONS: Array<{ value: MantleExportFormat; label: string }> = [
+  { value: 'mp4', label: 'MP4' },
   { value: 'webm', label: 'WebM' },
   { value: 'gif', label: 'GIF' }
 ];
@@ -310,13 +360,140 @@ const DEFAULT_VIDEO_BITRATE_MBPS = 8;
 const MIN_VIDEO_TRIM_DURATION_MS = 100;
 const VIDEO_EXPORT_MAX_DURATION_MS = 60000;
 const VIDEO_TRIM_STEP_MS = 100;
+const VIDEO_TRIM_PAGE_STEP_MS = 1000;
+const VIDEO_TRIM_COARSE_PAGE_STEP_MS = 5000;
+const VIDEO_ESTIMATE_WARN_BYTES = 75 * 1024 * 1024;
+const GIF_ESTIMATE_WARN_BYTES = 25 * 1024 * 1024;
+const VIDEO_AUDIO_BITRATE_BPS = 128_000;
+const MP4_EXPORT_PRESETS: MotionExportPreset[] = [
+  {
+    id: 'mp4-draft',
+    format: 'mp4',
+    label: 'Draft',
+    hint: '24 fps · 4 Mbps',
+    patch: { videoFrameRate: 24, videoBitrateMbps: 4, scale: 1 }
+  },
+  {
+    id: 'mp4-balanced',
+    format: 'mp4',
+    label: 'Balanced',
+    hint: '24 fps · 8 Mbps',
+    patch: { videoFrameRate: 24, videoBitrateMbps: 8, scale: 1 }
+  },
+  {
+    id: 'mp4-crisp',
+    format: 'mp4',
+    label: 'Crisp',
+    hint: '30 fps · 12 Mbps',
+    patch: { videoFrameRate: 30, videoBitrateMbps: 12, scale: 1 }
+  }
+];
+const WEBM_EXPORT_PRESETS: MotionExportPreset[] = [
+  {
+    id: 'webm-draft',
+    format: 'webm',
+    label: 'Draft',
+    hint: '24 fps · 4 Mbps',
+    patch: { videoFrameRate: 24, videoBitrateMbps: 4, scale: 1 }
+  },
+  {
+    id: 'webm-balanced',
+    format: 'webm',
+    label: 'Balanced',
+    hint: '24 fps · 8 Mbps',
+    patch: { videoFrameRate: 24, videoBitrateMbps: 8, scale: 1 }
+  },
+  {
+    id: 'webm-crisp',
+    format: 'webm',
+    label: 'Crisp',
+    hint: '30 fps · 12 Mbps',
+    patch: { videoFrameRate: 30, videoBitrateMbps: 12, scale: 1 }
+  }
+];
+const GIF_EXPORT_PRESETS: MotionExportPreset[] = [
+  {
+    id: 'gif-tiny',
+    format: 'gif',
+    label: 'Tiny',
+    hint: '8 fps · 2s',
+    patch: { videoFrameRate: 8, gifDurationMs: 2000, scale: 1 }
+  },
+  {
+    id: 'gif-social',
+    format: 'gif',
+    label: 'Social',
+    hint: '12 fps · 3s',
+    patch: { videoFrameRate: 12, gifDurationMs: 3000, scale: 1 }
+  },
+  {
+    id: 'gif-smooth',
+    format: 'gif',
+    label: 'Smooth',
+    hint: '18 fps · 4s',
+    patch: { videoFrameRate: 18, gifDurationMs: 4000, scale: 1 }
+  }
+];
+
+function motionExportPresets(format: MantleExportFormat): MotionExportPreset[] {
+  if (format === 'mp4') return MP4_EXPORT_PRESETS;
+  if (format === 'webm') return WEBM_EXPORT_PRESETS;
+  if (format === 'gif') return GIF_EXPORT_PRESETS;
+  return [];
+}
+
+function exportFormatLabel(format: MantleExportFormat): string {
+  if (format === 'jpeg') return 'JPEG';
+  if (format === 'webp') return 'WebP';
+  return format.toUpperCase();
+}
+
+function isMotionExportPresetActive(
+  card: MantleCard,
+  preset: MotionExportPreset
+): boolean {
+  return Object.entries(preset.patch).every(
+    ([key, value]) => card.export[key as keyof MantleCard['export']] === value
+  );
+}
+
+function estimateMotionExportBytes({
+  format,
+  durationMs,
+  frameRate,
+  pixelCount,
+  bitrate,
+  audioBitrate
+}: {
+  format: MantleExportFormat;
+  durationMs: number;
+  frameRate: number;
+  pixelCount: number;
+  bitrate?: number | undefined;
+  audioBitrate?: number | undefined;
+}): number | undefined {
+  if ((format === 'mp4' || format === 'webm') && bitrate != null) {
+    return Math.ceil(((bitrate + (audioBitrate ?? 0)) / 8) * (durationMs / 1000) * 1.04);
+  }
+
+  if (format === 'gif') {
+    const frameIntervalMs = 1000 / Math.max(1, frameRate);
+    const frameCount = Math.max(1, Math.ceil(durationMs / frameIntervalMs));
+    return Math.ceil(pixelCount * frameCount * 0.22 + frameCount * 64 + 8192);
+  }
+
+  return undefined;
+}
 
 function exportFormatForComposition(
   format: MantleExportFormat,
   mode: CompositionMode
 ): MantleExportFormat {
-  if (mode === 'motion') return format === 'gif' ? 'gif' : 'webm';
-  return format === 'webm' ? 'png' : format;
+  if (mode === 'motion') {
+    if (format === 'gif' || format === 'webm' || format === 'mp4') return format;
+    return 'mp4';
+  }
+  return format === 'webm' || format === 'mp4' ? 'png' : format;
 }
 
 function decimalPlaces(value: number): number {
@@ -378,6 +555,36 @@ function formatTimelineClock(ms: number | undefined): string {
   const seconds = Math.floor((totalMs % 60_000) / 1000);
   const tenths = Math.floor((totalMs % 1000) / 100);
   return `${minutes}:${seconds.toString().padStart(2, '0')}.${tenths}`;
+}
+
+/**
+ * Parse a timeline clock string into milliseconds.
+ * Accepts: "M:SS", "M:SS.t", "M:SS.tt", "M:SS.ttt", "SS", "SS.t", "SS.tt", "SS.ttt".
+ * Returns null on malformed input.
+ */
+function parseTimelineClock(input: string): number | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const colonMatch = trimmed.match(/^(\d+):([0-5]?\d)(?:\.(\d{1,3}))?$/);
+  if (colonMatch) {
+    const minutes = Number.parseInt(colonMatch[1] ?? '0', 10);
+    const seconds = Number.parseInt(colonMatch[2] ?? '0', 10);
+    const fracRaw = colonMatch[3] ?? '';
+    const fracMs = fracRaw
+      ? Number.parseInt(fracRaw.padEnd(3, '0').slice(0, 3), 10)
+      : 0;
+    return (minutes * 60 + seconds) * 1000 + fracMs;
+  }
+
+  const secondsMatch = trimmed.match(/^(\d+(?:\.\d{1,3})?)s?$/);
+  if (secondsMatch) {
+    const seconds = Number.parseFloat(secondsMatch[1] ?? '0');
+    if (!Number.isFinite(seconds)) return null;
+    return Math.round(seconds * 1000);
+  }
+
+  return null;
 }
 
 function snapNumericValue(value: number, min: number, max: number, step: number): number {
@@ -496,6 +703,124 @@ function ExportSection({
       </div>
       <div className={styles.exportSectionBody}>{children}</div>
     </section>
+  );
+}
+
+function PresetThumbnail({
+  presetId,
+  palette,
+  thumbnail,
+  variant = 'style'
+}: {
+  presetId?: string | undefined;
+  palette?: MantleBackground['palette'] | undefined;
+  thumbnail?: StyleThumbnailState | undefined;
+  variant?: 'style' | 'image';
+}) {
+  const thumbnailUrl =
+    thumbnail?.status === 'ready' ? thumbnail.url : undefined;
+  const thumbnailStyle: PresetThumbnailStyle = {
+    '--preset-thumbnail-background': palette?.background ?? '#101015',
+    '--preset-thumbnail-foreground': palette?.foreground ?? '#f6f5f2',
+    '--preset-thumbnail-accent': palette?.accent ?? '#e6b572'
+  };
+
+  return (
+    <span
+      className={
+        variant === 'image'
+          ? `${styles.presetThumbnail} ${styles.presetThumbnailImage}`
+          : styles.presetThumbnail
+      }
+      style={thumbnailStyle}
+      data-testid={presetId ? `style-thumbnail-${presetId}` : undefined}
+      data-thumbnail-status={thumbnailUrl ? 'ready' : (thumbnail?.status ?? 'idle')}
+      data-thumbnail-variant={variant}
+      aria-hidden="true"
+    >
+      {thumbnailUrl ? (
+        <img src={thumbnailUrl} alt="" decoding="async" draggable="false" />
+      ) : (
+        <span className={styles.presetThumbnailFallback}>
+          {variant === 'image' ? (
+            <span className={styles.presetThumbnailImageIcon}>
+              <Icon name="image" size={16} aria-hidden="true" />
+            </span>
+          ) : null}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function EditableTimecode({
+  valueMs,
+  minMs,
+  maxMs,
+  onCommit,
+  label,
+  prefix
+}: {
+  valueMs: number;
+  minMs: number;
+  maxMs: number;
+  onCommit: (nextMs: number) => void;
+  label: string;
+  prefix?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => formatTimelineClock(valueMs));
+
+  useEffect(() => {
+    if (!editing) setDraft(formatTimelineClock(valueMs));
+  }, [valueMs, editing]);
+
+  const commit = () => {
+    const parsed = parseTimelineClock(draft);
+    if (parsed != null) {
+      const next = Math.round(clampNumber(parsed, minMs, maxMs));
+      onCommit(next);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        className={styles.stageTimelineRangeInput}
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        autoFocus
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setDraft(formatTimelineClock(valueMs));
+            setEditing(false);
+          }
+        }}
+        aria-label={label}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={styles.stageTimelineRangeChip}
+      onClick={() => setEditing(true)}
+      title={`${label} — click to edit`}
+      aria-label={`${label}: ${formatTimelineClock(valueMs)} — click to edit`}
+    >
+      {prefix ? <span>{prefix}</span> : null}
+      <strong>{formatTimelineClock(valueMs)}</strong>
+    </button>
   );
 }
 
@@ -666,19 +991,51 @@ function exportFailureNotice(
   if (/not supported by this browser/i.test(detail)) {
     return {
       tone: 'error',
-      title: `${format.toUpperCase()} unsupported`,
+      title: `${exportFormatLabel(format)} unsupported`,
       detail:
-        format === 'webm'
-          ? 'Use a browser with MediaRecorder WebM support, or choose PNG/GIF for a still export.'
+        format === 'mp4' || format === 'webm'
+          ? `Use a browser with MediaRecorder ${exportFormatLabel(format)} support, or choose another motion format.`
           : 'Choose PNG, JPEG, WebP, or GIF for this browser.'
     };
   }
 
-  if (/too large|too long|working canvas memory|lower export scale|keep exports under|lower fps|trim the clip/i.test(detail)) {
+  if (/source audio|audio.+decode|audio.+prepare/i.test(detail)) {
     return {
       tone: 'error',
-      title: 'Export too large',
+      title: 'Audio export failed',
+      detail: 'The browser could not read this video audio track. Disable Audio or relink a browser-decodable video.'
+    };
+  }
+
+  if (/video source|local video|video.+decode|video.+prepare/i.test(detail)) {
+    return {
+      tone: 'warning',
+      title: 'Reimport source video',
+      detail: 'The browser could not decode the local video for export. Relink the file or use MP4/WebM that plays in this browser.'
+    };
+  }
+
+  if (/(webm|mp4) recording|empty file|could not start/i.test(detail)) {
+    return {
+      tone: 'error',
+      title: `${exportFormatLabel(format)} export failed`,
+      detail: `The browser could not finish recording this ${exportFormatLabel(format)}. Try a shorter clip, lower FPS, lower bitrate, or a smaller export scale.`
+    };
+  }
+
+  if (/too large|too long|too heavy|working canvas memory|lower export scale|keep exports under|lower fps|trim the clip|took too long/i.test(detail)) {
+    return {
+      tone: 'error',
+      title: 'Export too heavy',
       detail
+    };
+  }
+
+  if (/unable to create|origin-clean|securityerror|tainted/i.test(detail)) {
+    return {
+      tone: 'error',
+      title: 'Export blocked',
+      detail: 'The browser could not encode this canvas. Relink local media and try a smaller export size.'
     };
   }
 
@@ -734,12 +1091,6 @@ export function App() {
     right: number;
   }>({ top: 56, right: 18 });
   const [notice, setNotice] = useState<AppNotice | null>(null);
-  const [density, setDensity] = useState<'compact' | 'cozy'>(() => {
-    if (typeof window === 'undefined') return 'compact';
-    return window.localStorage.getItem('mantle.density') === 'cozy'
-      ? 'cozy'
-      : 'compact';
-  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const userPresetInputRef = useRef<HTMLInputElement | null>(null);
   const userPresetFolderInputRef = useRef<HTMLInputElement | null>(null);
@@ -857,18 +1208,6 @@ export function App() {
       objectUrlsRef.current.clear();
     };
   }, [clearNoticeTimer]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const root = document.documentElement;
-    if (density === 'cozy') {
-      root.setAttribute('data-density', 'cozy');
-      window.localStorage.setItem('mantle.density', 'cozy');
-    } else {
-      root.removeAttribute('data-density');
-      window.localStorage.removeItem('mantle.density');
-    }
-  }, [density]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1127,6 +1466,11 @@ export function App() {
 
     return humanizeStyleId(activeCard?.background.presetId);
   }, [activeCard?.background.presetId, activeCard?.themeId, userPresets]);
+  const styleThumbnailSources = useMemo<readonly StyleThumbnailSource[]>(
+    () => (presetRailMode === 'built-in' ? STYLE_PRESETS : userPresets),
+    [presetRailMode, userPresets]
+  );
+  const styleThumbnails = useStyleThumbnails(styleThumbnailSources);
   const activeMissingSourceAssetId =
     activeCard?.sourceAssetId && !hasRenderableAssetSource(activeAsset)
       ? activeCard.sourceAssetId
@@ -1201,7 +1545,7 @@ export function App() {
         showNotice({
           tone: 'info',
           title: 'Use video export',
-          detail: 'Motion scenes export as WebM. Switch to Still to copy a PNG frame.'
+          detail: 'Motion scenes export as MP4, WebM, or GIF. Switch to Still to copy a PNG frame.'
         });
         return;
       }
@@ -1703,6 +2047,15 @@ export function App() {
 
   const cancelExport = useCallback(() => {
     exportAbortControllerRef.current?.abort();
+    setExportProgress((current) =>
+      current
+        ? {
+            ...current,
+            detail: 'Canceling export',
+            canCancel: false
+          }
+        : current
+    );
   }, []);
 
   const handleExport = async (copyToClipboard = false) => {
@@ -1714,7 +2067,7 @@ export function App() {
       showNotice({
         tone: 'info',
         title: 'Use video export',
-        detail: 'Motion scenes export as WebM. Switch to Still to copy a PNG frame.'
+        detail: 'Motion scenes export as MP4, WebM, or GIF. Switch to Still to copy a PNG frame.'
       });
       return;
     }
@@ -1752,12 +2105,13 @@ export function App() {
 
     if (
       activeAsset?.mediaKind === 'video' &&
+      exportFormat !== 'mp4' &&
       exportFormat !== 'webm' &&
       exportFormat !== 'gif'
     ) {
       showNotice({
         tone: 'info',
-        title: 'Choose WebM or GIF',
+        title: 'Choose MP4, WebM, or GIF',
         detail: 'Video sources need a motion format so the whole scene can be rendered over time.'
       });
       return;
@@ -1772,11 +2126,16 @@ export function App() {
       return;
     }
 
-    if (exportFormat === 'webm') {
-      if (!isMantleWebMSupported()) {
+    if (exportFormat === 'mp4' || exportFormat === 'webm') {
+      const isSupported =
+        exportFormat === 'mp4' ? isMantleMp4Supported() : isMantleWebMSupported();
+      const createVideoPlan =
+        exportFormat === 'mp4' ? createMantleMp4ExportPlan : createMantleWebMExportPlan;
+
+      if (!isSupported) {
         showNotice(
           exportFailureNotice(
-            new Error('WebM export is not supported by this browser.'),
+            new Error(`${exportFormatLabel(exportFormat)} export is not supported by this browser.`),
             exportFormat,
             false
           )
@@ -1785,7 +2144,7 @@ export function App() {
       }
 
       try {
-        createMantleWebMExportPlan({
+        createVideoPlan({
           card: cardForExport,
           target: activeTarget,
           asset: activeAsset,
@@ -1825,10 +2184,24 @@ export function App() {
 
       if (copyToClipboard) {
         const clipboardMimeType = 'image/png';
+        setExportProgress({
+          phase: 'rendering',
+          progress: 0.15,
+          detail: 'Rendering PNG for clipboard',
+          canCancel: false
+        });
         const clipboardBlob = exportMantleProjectCard({
           project: projectForExport,
           cardId: cardForExport.id
-        }).then((result) => result.blob);
+        }).then((result) => {
+          setExportProgress({
+            phase: 'finalizing',
+            progress: 0.85,
+            detail: 'Writing PNG to clipboard',
+            canCancel: false
+          });
+          return result.blob;
+        });
 
         await navigator.clipboard.write([
           new ClipboardItem({ [clipboardMimeType]: clipboardBlob })
@@ -1841,16 +2214,19 @@ export function App() {
         return;
       }
 
-      if (exportFormat === 'webm') {
+      if (exportFormat === 'mp4' || exportFormat === 'webm') {
+        const exportVideo =
+          exportFormat === 'mp4' ? exportMantleMp4 : exportMantleWebM;
+        const formatLabel = exportFormatLabel(exportFormat);
         const controller = new AbortController();
         exportAbortControllerRef.current = controller;
         setExportProgress({
           phase: 'preparing',
           progress: 0,
-          detail: 'Preparing WebM export',
+          detail: `Preparing ${formatLabel} export`,
           canCancel: true
         });
-        const result = await exportMantleWebM({
+        const result = await exportVideo({
           card: cardForExport,
           target: activeTarget,
           asset: activeAsset,
@@ -1905,9 +2281,21 @@ export function App() {
         return;
       }
 
+      setExportProgress({
+        phase: 'rendering',
+        progress: exportFormat === 'gif' ? 0.1 : 0.25,
+        detail: `Rendering ${exportFormatLabel(exportFormat)} export`,
+        canCancel: false
+      });
       const result = await exportMantleProjectCard({
         project: projectForExport,
         cardId: cardForExport.id
+      });
+      setExportProgress({
+        phase: 'finalizing',
+        progress: 0.9,
+        detail: 'Preparing download',
+        canCancel: false
       });
 
       downloadBlob(result);
@@ -1943,7 +2331,9 @@ export function App() {
 
   const clearActiveBackgroundImage = () => {
     updateActiveCard({
-      background: createBackgroundForPreset(activeCard.background, 'marbling')
+      background: resetBackgroundColors(
+        createBackgroundForPreset(activeCard.background, 'smoke-veil')
+      )
     });
   };
 
@@ -2120,16 +2510,26 @@ export function App() {
     activeCard.export.format,
     effectiveCompositionMode
   );
+  const mp4ExportSupported = useMemo(() => canRecordMp4Export(), []);
+  const webmExportSupported = useMemo(() => canRecordWebMExport(), []);
   const exportFormatOptions =
     effectiveCompositionMode === 'motion'
       ? MOTION_EXPORT_FORMAT_OPTIONS
       : STILL_EXPORT_FORMAT_OPTIONS;
+  const activeMotionExportPresets = motionExportPresets(activeExportFormat);
   const showExportQuality =
     activeExportFormat === 'jpeg' || activeExportFormat === 'webp';
   const showExportGifSettings = activeExportFormat === 'gif';
-  const showExportVideoSettings = activeExportFormat === 'webm';
+  const showExportVideoSettings =
+    activeExportFormat === 'mp4' || activeExportFormat === 'webm';
   const showExportMotionSettings = showExportGifSettings || showExportVideoSettings;
+  const showExportMotionSection = showExportMotionSettings;
+  const showExportFrameRateSetting =
+    effectiveCompositionMode === 'motion' && showExportMotionSettings;
   const showExportQualitySettings = showExportQuality || showExportVideoSettings;
+  const sourceAudioAvailable = showExportVideoSettings && activeVideoAsset != null;
+  const exportAudioEnabled = activeCard.export.audioEnabled ?? true;
+  const exportAudioIncluded = sourceAudioAvailable && exportAudioEnabled;
   const videoTrimRange = resolveVideoTrimRange(activeCard, activeVideoDurationMs);
   const videoLoopEnabled = activeCard.export.videoLoop ?? true;
   const exportFrameRateMax = showExportGifSettings ? 24 : 60;
@@ -2155,6 +2555,113 @@ export function App() {
       (activeVideoDurationMs || VIDEO_EXPORT_MAX_DURATION_MS) / 1000
     )
   );
+  const motionExportPreflight = useMemo(() => {
+    const notices: ExportNotice[] = [];
+
+    if (
+      exportSettingsMode !== 'download' ||
+      effectiveCompositionMode !== 'motion' ||
+      !showExportMotionSettings
+    ) {
+      return { notices, blocked: false };
+    }
+
+    if (activeExportFormat === 'mp4' && !mp4ExportSupported) {
+      notices.push({
+        tone: 'error',
+        title: 'MP4 unavailable',
+        detail: 'This browser cannot record MP4 from the canvas. Choose WebM or GIF.'
+      });
+      return { notices, blocked: true };
+    }
+
+    if (activeExportFormat === 'webm' && !webmExportSupported) {
+      notices.push({
+        tone: 'error',
+        title: 'WebM unavailable',
+        detail: 'This browser cannot record WebM from the canvas. Choose MP4 or GIF.'
+      });
+      return { notices, blocked: true };
+    }
+
+    try {
+      const plan = activeExportFormat === 'gif'
+        ? createMantleGifExportPlan({
+            card: activeCard,
+            target: activeTarget,
+            asset: activeAsset,
+            backgroundAsset: activeBackgroundAsset,
+            scale: activeCard.export.scale
+          })
+        : activeExportFormat === 'mp4'
+          ? createMantleMp4ExportPlan({
+              card: activeCard,
+              target: activeTarget,
+              asset: activeAsset,
+              backgroundAsset: activeBackgroundAsset,
+              scale: activeCard.export.scale
+            })
+          : createMantleWebMExportPlan({
+            card: activeCard,
+            target: activeTarget,
+            asset: activeAsset,
+            backgroundAsset: activeBackgroundAsset,
+            scale: activeCard.export.scale
+          });
+      const estimateBytes = estimateMotionExportBytes({
+        format: activeExportFormat,
+        durationMs: plan.durationMs,
+        frameRate: plan.frameRate,
+        pixelCount: plan.pixelCount,
+        bitrate: 'bitrate' in plan ? plan.bitrate : undefined,
+        audioBitrate: exportAudioIncluded ? VIDEO_AUDIO_BITRATE_BPS : undefined
+      });
+      const estimateWarnBytes =
+        activeExportFormat === 'gif' ? GIF_ESTIMATE_WARN_BYTES : VIDEO_ESTIMATE_WARN_BYTES;
+
+      if (estimateBytes != null && estimateBytes > estimateWarnBytes) {
+        notices.push({
+          tone: 'warning',
+          title: 'Large export',
+          detail:
+            activeExportFormat === 'gif'
+              ? 'GIF can get heavy quickly. Lower Scale, trim the clip, or reduce frame rate.'
+              : `This ${exportFormatLabel(activeExportFormat)} may take a while. Lower bitrate, trim the clip, or reduce Scale if export feels slow.`
+        });
+      }
+
+      return {
+        notices,
+        blocked: false,
+        estimateBytes,
+        frameCount: plan.frameCount
+      };
+    } catch (error) {
+      notices.push({
+        tone: 'error',
+        title: 'Export settings need changes',
+        detail: errorDetail(toAppFailure(error))
+      });
+      return { notices, blocked: true };
+    }
+  }, [
+    activeAsset,
+    activeBackgroundAsset,
+    activeCard,
+    activeExportFormat,
+    activeTarget,
+    effectiveCompositionMode,
+    exportAudioIncluded,
+    exportSettingsMode,
+    mp4ExportSupported,
+    showExportMotionSettings,
+    webmExportSupported
+  ]);
+  const exportActionDisabled =
+    isExporting ||
+    (exportSettingsMode === 'download' &&
+      effectiveCompositionMode === 'motion' &&
+      motionExportPreflight.blocked);
   const videoTimelineMaxMs = Math.max(
     MIN_VIDEO_TRIM_DURATION_MS,
     Math.min(
@@ -2199,17 +2706,22 @@ export function App() {
   const videoTrimIsFull =
     videoTrimRange.startMs <= 0 &&
     Math.abs(videoTrimRange.endMs - videoTimelineMaxMs) < VIDEO_TRIM_STEP_MS;
+  const videoTrimStartVisible = videoTrimRange.startMs > 0;
+  const videoTrimEndVisible =
+    Math.abs(videoTrimRange.endMs - videoTimelineMaxMs) >= VIDEO_TRIM_STEP_MS;
   const getStageTimelineTime = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
       const rect = stageTimelineTrackRef.current?.getBoundingClientRect();
       if (!rect || rect.width <= 0) return videoTrimRange.startMs;
 
       const progress = clampNumber((event.clientX - rect.left) / rect.width, 0, 1);
+      // Shift = coarse 1s snap; Alt = precision 1ms (no snap); default 100ms
+      const stepMs = event.shiftKey ? 1000 : event.altKey ? 1 : VIDEO_TRIM_STEP_MS;
       return snapNumericValue(
         progress * stageTimelineDurationMs,
         0,
         stageTimelineDurationMs,
-        VIDEO_TRIM_STEP_MS
+        stepMs
       );
     },
     [stageTimelineDurationMs, videoTrimRange.startMs]
@@ -2321,12 +2833,49 @@ export function App() {
     (event: ReactKeyboardEvent<HTMLElement>) => {
       if (!activeVideoAsset || activeVideoDurationMs <= 0) return;
 
-      const stepMs = event.shiftKey ? 1000 : VIDEO_TRIM_STEP_MS;
+      if (event.key === ' ' || event.key === 'Spacebar') {
+        event.preventDefault();
+        sendVideoPlaybackCommand({ type: 'toggle-playback' });
+        return;
+      }
+
+      // Mark in/out at playhead — Premiere/Resolve convention
+      if (event.key === '[') {
+        event.preventDefault();
+        if (
+          stagePlayerCurrentTimeMs <
+          videoTrimRange.endMs - MIN_VIDEO_TRIM_DURATION_MS
+        ) {
+          updateVideoTrim({ startMs: stagePlayerCurrentTimeMs });
+        }
+        return;
+      }
+      if (event.key === ']') {
+        event.preventDefault();
+        if (
+          stagePlayerCurrentTimeMs >
+          videoTrimRange.startMs + MIN_VIDEO_TRIM_DURATION_MS
+        ) {
+          updateVideoTrim({ endMs: stagePlayerCurrentTimeMs });
+        }
+        return;
+      }
+
+      const stepMs = event.shiftKey
+        ? 1000
+        : event.altKey
+          ? 1
+          : VIDEO_TRIM_STEP_MS;
+      const pageStepMs = event.shiftKey
+        ? VIDEO_TRIM_COARSE_PAGE_STEP_MS
+        : VIDEO_TRIM_PAGE_STEP_MS;
       const keyActions: Partial<Record<string, number>> = {
         ArrowLeft: stagePlayerCurrentTimeMs - stepMs,
         ArrowDown: stagePlayerCurrentTimeMs - stepMs,
         ArrowRight: stagePlayerCurrentTimeMs + stepMs,
         ArrowUp: stagePlayerCurrentTimeMs + stepMs,
+        PageDown: stagePlayerCurrentTimeMs - pageStepMs,
+        PageUp: stagePlayerCurrentTimeMs + pageStepMs,
         Home: videoTrimRange.startMs,
         End: videoTrimRange.endMs
       };
@@ -2340,7 +2889,9 @@ export function App() {
       activeVideoAsset,
       activeVideoDurationMs,
       seekStageTimeline,
+      sendVideoPlaybackCommand,
       stagePlayerCurrentTimeMs,
+      updateVideoTrim,
       videoTrimRange.endMs,
       videoTrimRange.startMs
     ]
@@ -2507,22 +3058,6 @@ export function App() {
             >
               <Icon name="redo" size={14} aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              className={`${styles.ghostButton} ${styles.iconButton}`}
-              onClick={() =>
-                setDensity((current) => (current === 'cozy' ? 'compact' : 'cozy'))
-              }
-              title={
-                density === 'cozy'
-                  ? 'Switch to compact density'
-                  : 'Switch to cozy density'
-              }
-              aria-label="Toggle UI density"
-              aria-pressed={density === 'cozy'}
-            >
-              <Icon name="density" size={14} aria-hidden="true" />
-            </button>
           </div>
 
           <div className={styles.toolGroup}>
@@ -2587,11 +3122,6 @@ export function App() {
                     <span className={styles.exportPopoverTitle}>
                       {exportSettingsMode === 'copy' ? 'Copy PNG' : 'Download'}
                     </span>
-                    <span className={styles.exportPopoverHint}>
-                      {exportSettingsMode === 'copy'
-                        ? 'Clipboard uses PNG. Scale controls copied resolution.'
-                        : 'Choose file name, format, and output settings.'}
-                    </span>
                   </div>
                   <button
                     type="button"
@@ -2606,7 +3136,7 @@ export function App() {
                 {exportSettingsMode === 'download' ? (
                   <ExportSection title="Format">
                     <label className={styles.exportTextField}>
-                      <span>Filename</span>
+                      <span>File</span>
                       <input
                         value={activeCard.export.fileName ?? ''}
                         placeholder={exportFileNamePlaceholder}
@@ -2624,20 +3154,34 @@ export function App() {
                       role="group"
                       aria-label="Export format"
                     >
-                      {exportFormatOptions.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={
-                            activeExportFormat === option.value
-                              ? `${styles.exportSegmentedOption} ${styles.exportSegmentedOptionActive}`
-                              : styles.exportSegmentedOption
-                          }
-                          onClick={() => updateActiveExport({ format: option.value })}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
+                      {exportFormatOptions.map((option) => {
+                        const disabled =
+                          effectiveCompositionMode === 'motion' && (
+                            (option.value === 'mp4' && !mp4ExportSupported) ||
+                            (option.value === 'webm' && !webmExportSupported)
+                          );
+
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={
+                              activeExportFormat === option.value
+                                ? `${styles.exportSegmentedOption} ${styles.exportSegmentedOptionActive}`
+                                : styles.exportSegmentedOption
+                            }
+                            disabled={disabled}
+                            onClick={() => updateActiveExport({ format: option.value })}
+                            title={
+                              disabled
+                                ? `${option.label} export is not available in this browser`
+                                : undefined
+                            }
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </ExportSection>
                 ) : null}
@@ -2654,50 +3198,73 @@ export function App() {
                   />
 
                   <div className={styles.exportSummary}>
-                    <span>Output size</span>
+                    <span>Output</span>
                     <strong>{exportWidth} × {exportHeight}</strong>
                   </div>
                 </ExportSection>
 
-                {exportSettingsMode === 'download' && showExportMotionSettings ? (
+                {exportSettingsMode === 'download' && showExportMotionSection ? (
                   <ExportSection
                     title="Motion"
-                    meta={showExportVideoSettings ? 'WebM' : 'GIF'}
+                    meta={showExportVideoSettings ? exportFormatLabel(activeExportFormat) : 'GIF'}
                   >
+                    {effectiveCompositionMode === 'motion' &&
+                    activeMotionExportPresets.length > 0 ? (
+                      <div
+                        className={styles.exportPresetGrid}
+                        role="group"
+                        aria-label={`${activeExportFormat.toUpperCase()} presets`}
+                      >
+                        {activeMotionExportPresets.map((preset) => {
+                          const active = isMotionExportPresetActive(activeCard, preset);
+                          const disabled =
+                            (preset.format === 'mp4' && !mp4ExportSupported) ||
+                            (preset.format === 'webm' && !webmExportSupported);
+
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              className={
+                                active
+                                  ? `${styles.exportPresetButton} ${styles.exportPresetButtonActive}`
+                                  : styles.exportPresetButton
+                              }
+                              disabled={disabled}
+                              onClick={() => updateActiveExport(preset.patch)}
+                            >
+                              <strong>{preset.label}</strong>
+                              <span>{preset.hint}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
                     {activeVideoAsset ? (
-                      <>
-                        <ExportSlider
-                          label="Start"
-                          min={0}
-                          max={Math.max(0.1, exportVideoDurationMaxSeconds - 0.1)}
-                          step={0.1}
-                          value={videoTrimRange.startMs / 1000}
-                          suffix="s"
-                          onChange={(start) =>
-                            updateVideoTrim({ startMs: Math.round(start * 1000) })
-                          }
-                        />
-
-                        <ExportSlider
-                          label="End"
-                          min={Math.min(
-                            exportVideoDurationMaxSeconds,
-                            videoTrimRange.startMs / 1000 + 0.1
-                          )}
-                          max={exportVideoDurationMaxSeconds}
-                          step={0.1}
-                          value={videoTrimRange.endMs / 1000}
-                          suffix="s"
-                          onChange={(end) =>
-                            updateVideoTrim({ endMs: Math.round(end * 1000) })
-                          }
-                        />
-
-                        <div className={styles.exportSummary}>
-                          <span>Clip duration</span>
+                      <div
+                        className={styles.exportTimelineSummary}
+                        aria-label="Video trim summary"
+                      >
+                        <span>
+                          <span>Frame</span>
+                          <strong>
+                            {formatPlaybackTime(stagePlayerCurrentTimeMs)}/
+                            {formatPlaybackTime(stageTimelineSourceDurationMs)}
+                          </strong>
+                        </span>
+                        <span>
+                          <span>Trim</span>
+                          <strong>
+                            {formatPlaybackTime(videoTrimRange.startMs)}-
+                            {formatPlaybackTime(videoTrimRange.endMs)}
+                          </strong>
+                        </span>
+                        <span>
+                          <span>Duration</span>
                           <strong>{formatPlaybackTime(videoTrimRange.durationMs)}</strong>
-                        </div>
-                      </>
+                        </span>
+                      </div>
                     ) : (
                       <ExportSlider
                         label="Duration"
@@ -2710,7 +3277,8 @@ export function App() {
                         step={0.1}
                         value={
                           showExportGifSettings
-                            ? (activeCard.export.gifDurationMs ?? DEFAULT_GIF_DURATION_MS) / 1000
+                            ? (activeCard.export.gifDurationMs ??
+                                DEFAULT_GIF_DURATION_MS) / 1000
                             : Math.min(
                                 exportVideoDurationMaxSeconds,
                                 exportVideoDurationMs / 1000
@@ -2732,7 +3300,6 @@ export function App() {
                         <label className={styles.exportToggle}>
                           <span>
                             <strong>Loop</strong>
-                            <span>Use 0 loop count for infinite replay.</span>
                           </span>
                           <input
                             type="checkbox"
@@ -2758,35 +3325,63 @@ export function App() {
                       </>
                     ) : null}
 
-                    {showExportVideoSettings && activeVideoAsset ? (
-                      <label className={styles.exportToggle}>
-                        <span>
-                          <strong>Loop preview</strong>
-                          <span>Replay the selected trim range while previewing.</span>
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={videoLoopEnabled}
-                          onChange={(event) =>
-                            updateActiveExport({
-                              videoLoop: event.currentTarget.checked
-                            })
-                          }
-                        />
-                      </label>
+                    {showExportVideoSettings ? (
+                      <>
+                        <label className={styles.exportToggle}>
+                          <span>
+                            <strong>Audio</strong>
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={exportAudioEnabled && sourceAudioAvailable}
+                            disabled={!sourceAudioAvailable}
+                            title={
+                              sourceAudioAvailable
+                                ? 'Include source-video audio'
+                                : 'Requires a video source'
+                            }
+                            onChange={(event) =>
+                              updateActiveExport({
+                                audioEnabled: event.currentTarget.checked
+                              })
+                            }
+                          />
+                        </label>
+
+                        {activeVideoAsset ? (
+                          <label className={styles.exportToggle}>
+                            <span>
+                              <strong>Preview loop</strong>
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={videoLoopEnabled}
+                              title="Loop playback on the stage"
+                              onChange={(event) =>
+                                updateActiveExport({
+                                  videoLoop: event.currentTarget.checked
+                                })
+                              }
+                            />
+                          </label>
+                        ) : null}
+                      </>
                     ) : null}
 
-                    <ExportSlider
-                      label="Frame rate"
-                      min={exportFrameRateMin}
-                      max={exportFrameRateMax}
-                      step={1}
-                      value={exportFrameRate}
-                      suffix="fps"
-                      onChange={(videoFrameRate) =>
-                        updateActiveExport({ videoFrameRate })
-                      }
-                    />
+                    {showExportFrameRateSetting ? (
+                      <ExportSlider
+                        label="Frame rate"
+                        min={exportFrameRateMin}
+                        max={exportFrameRateMax}
+                        step={1}
+                        value={exportFrameRate}
+                        suffix="fps"
+                        onChange={(videoFrameRate) =>
+                          updateActiveExport({ videoFrameRate })
+                        }
+                      />
+                    ) : null}
+
                   </ExportSection>
                 ) : null}
 
@@ -2824,6 +3419,26 @@ export function App() {
                   </ExportSection>
                 ) : null}
 
+                {effectiveCompositionMode === 'motion' &&
+                motionExportPreflight.notices.length > 0 ? (
+                  <div className={styles.exportNoticeStack}>
+                    {motionExportPreflight.notices.map((notice) => (
+                      <div
+                        key={`${notice.title}-${notice.detail}`}
+                        className={
+                          notice.tone === 'error'
+                            ? `${styles.exportNotice} ${styles.exportNoticeError}`
+                            : styles.exportNotice
+                        }
+                        role={notice.tone === 'error' ? 'alert' : 'status'}
+                      >
+                        <strong>{notice.title}</strong>
+                        <span>{notice.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 <div className={styles.exportPopoverActions}>
                   {exportSettingsMode === 'copy' ? (
                     <button
@@ -2842,7 +3457,7 @@ export function App() {
                     <button
                       type="button"
                       className={styles.primaryButton}
-                      disabled={isExporting}
+                      disabled={exportActionDisabled}
                       onClick={() => {
                         setExportSettingsOpen(false);
                         void handleExport(false);
@@ -2859,7 +3474,7 @@ export function App() {
           </div>
 
           {exportProgress ? (
-            <div className={styles.exportProgress} role="status">
+            <div className={styles.exportProgress} role="status" aria-live="polite">
               <span className={styles.exportProgressText}>
                 <strong>{progressPercent(exportProgress.progress)}</strong>
                 <span>{exportProgress.detail}</span>
@@ -2966,6 +3581,20 @@ export function App() {
                             applyStylePreset(preset);
                           }}
                         >
+                          <PresetThumbnail
+                            presetId={preset.id}
+                            palette={
+                              preset.kind === 'preset'
+                                ? preset.background.palette
+                                : undefined
+                            }
+                            thumbnail={
+                              preset.kind === 'preset'
+                                ? styleThumbnails[preset.id]
+                                : undefined
+                            }
+                            variant={preset.kind === 'image' ? 'image' : 'style'}
+                          />
                           <span className={styles.presetLabel}>
                             <span className={styles.presetName}>{preset.label}</span>
                             <span className={styles.presetHint}>{preset.hint}</span>
@@ -2987,6 +3616,7 @@ export function App() {
                     onClick={openPresetDraft}
                     title="Save current style"
                   >
+                    <Icon name="plus" size={13} aria-hidden="true" />
                     <span>Save</span>
                   </button>
                   <div className={styles.savedPresetImport} ref={presetImportMenuRef}>
@@ -2994,10 +3624,12 @@ export function App() {
                       type="button"
                       className={styles.savedPresetImportButton}
                       aria-expanded={presetImportMenuOpen}
+                      aria-haspopup="menu"
                       onClick={() => setPresetImportMenuOpen((open) => !open)}
+                      title="Load style presets"
                     >
                       <Icon name="upload" size={13} aria-hidden="true" />
-                      <span>Import</span>
+                      <span>Load</span>
                       <Icon name="chevron" size={12} aria-hidden="true" />
                     </button>
                     {presetImportMenuOpen ? (
@@ -3010,7 +3642,8 @@ export function App() {
                             userPresetInputRef.current?.click();
                           }}
                         >
-                          <span>Import from file</span>
+                          <Icon name="upload" size={12} aria-hidden="true" />
+                          <span>Load file</span>
                         </button>
                         <button
                           type="button"
@@ -3020,7 +3653,8 @@ export function App() {
                             void openUserPresetFolder();
                           }}
                         >
-                          <span>Import from folder</span>
+                          <Icon name="image" size={12} aria-hidden="true" />
+                          <span>Load folder</span>
                         </button>
                       </div>
                     ) : null}
@@ -3092,6 +3726,11 @@ export function App() {
                           }
                           onClick={() => applyStylePreset(preset)}
                         >
+                          <PresetThumbnail
+                            presetId={preset.id}
+                            palette={preset.background.palette}
+                            thumbnail={styleThumbnails[preset.id]}
+                          />
                           <span className={styles.presetLabel}>
                             <span className={styles.presetName}>{preset.label}</span>
                             <span className={styles.presetHint}>{preset.hint}</span>
@@ -3230,9 +3869,67 @@ export function App() {
                     <span>/</span>
                     {formatTimelineClock(stageTimelineSourceDurationMs)}
                   </span>
-                  <span className={styles.stageTimelineStatusMeta}>
-                    clip {formatTimelineClock(videoTrimRange.durationMs)}
-                  </span>
+                  <div className={styles.stageTimelineRangeRow}>
+                    <button
+                      type="button"
+                      className={styles.stageTimelineMarkButton}
+                      disabled={
+                        stagePlayerCurrentTimeMs >=
+                        videoTrimRange.endMs - MIN_VIDEO_TRIM_DURATION_MS
+                      }
+                      onClick={() =>
+                        updateVideoTrim({ startMs: stagePlayerCurrentTimeMs })
+                      }
+                      title="Set in at playhead — [ "
+                      aria-label="Set trim in at current playhead"
+                    >
+                      [
+                    </button>
+                    <EditableTimecode
+                      label="Trim start"
+                      prefix="in"
+                      valueMs={videoTrimRange.startMs}
+                      minMs={0}
+                      maxMs={Math.max(
+                        0,
+                        videoTrimRange.endMs - MIN_VIDEO_TRIM_DURATION_MS
+                      )}
+                      onCommit={(startMs) => updateVideoTrim({ startMs })}
+                    />
+                    <span className={styles.stageTimelineRangeDash} aria-hidden="true">
+                      –
+                    </span>
+                    <EditableTimecode
+                      label="Trim end"
+                      prefix="out"
+                      valueMs={videoTrimRange.endMs}
+                      minMs={Math.min(
+                        videoTimelineMaxMs,
+                        videoTrimRange.startMs + MIN_VIDEO_TRIM_DURATION_MS
+                      )}
+                      maxMs={videoTimelineMaxMs}
+                      onCommit={(endMs) => updateVideoTrim({ endMs })}
+                    />
+                    <button
+                      type="button"
+                      className={styles.stageTimelineMarkButton}
+                      disabled={
+                        stagePlayerCurrentTimeMs <=
+                        videoTrimRange.startMs + MIN_VIDEO_TRIM_DURATION_MS
+                      }
+                      onClick={() =>
+                        updateVideoTrim({ endMs: stagePlayerCurrentTimeMs })
+                      }
+                      title="Set out at playhead — ] "
+                      aria-label="Set trim out at current playhead"
+                    >
+                      ]
+                    </button>
+                    <span className={styles.stageTimelineRangeDuration}>
+                      ={' '}
+                      {formatTimelineClock(videoTrimRange.durationMs)}
+                    </span>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -3266,16 +3963,13 @@ export function App() {
                   className={`${styles.stagePlayerButton} ${styles.stagePlayerTextButton}`}
                   disabled={videoTrimIsFull}
                   onClick={resetVideoTrim}
-                  title="Use full source duration"
+                  title="Reset trim to full source duration"
                 >
                   <Icon name="reset" size={13} aria-hidden="true" />
-                  <span>Full</span>
+                  <span>Reset</span>
                 </button>
               </div>
               <div className={styles.stageTimelineBody}>
-                <div className={styles.stageTimelineTrackLabels}>
-                  <span className={styles.stageTimelineTrackLabel}>Video 1</span>
-                </div>
                 <div className={styles.stageTimelineCanvas}>
                   <div className={styles.stageTimelineRuler} aria-hidden="true">
                     {stageTimelineTicks.map((tick) => (
@@ -3299,10 +3993,32 @@ export function App() {
                     onPointerCancel={endStageTimelineDrag}
                     onLostPointerCapture={endStageTimelineDrag}
                     onKeyDown={handleStageTimelineKeyDown}
-                    role="group"
-                    aria-label="Video timeline"
+                    role="slider"
+                    aria-label="Current frame"
+                    aria-valuemin={Math.round(videoTrimRange.startMs)}
+                    aria-valuemax={Math.round(videoTrimRange.endMs)}
+                    aria-valuenow={Math.round(stagePlayerCurrentTimeMs)}
+                    aria-valuetext={`${formatTimelineClock(
+                      stagePlayerCurrentTimeMs
+                    )} of ${formatTimelineClock(stageTimelineSourceDurationMs)}`}
                     tabIndex={0}
                   >
+                    <span
+                      className={[
+                        styles.stageTimelineTrimmed,
+                        styles.stageTimelineTrimmedStart,
+                        videoTrimStartVisible ? '' : styles.stageTimelineTrimmedHidden
+                      ].filter(Boolean).join(' ')}
+                      aria-hidden="true"
+                    />
+                    <span
+                      className={[
+                        styles.stageTimelineTrimmed,
+                        styles.stageTimelineTrimmedEnd,
+                        videoTrimEndVisible ? '' : styles.stageTimelineTrimmedHidden
+                      ].filter(Boolean).join(' ')}
+                      aria-hidden="true"
+                    />
                     <div className={styles.stageTimelineClip}>
                       <button
                         type="button"
@@ -3314,7 +4030,12 @@ export function App() {
                         onPointerUp={endStageTimelineDrag}
                         onPointerCancel={endStageTimelineDrag}
                         onLostPointerCapture={endStageTimelineDrag}
-                        title={`Trim start: ${formatPlaybackTime(videoTrimRange.startMs)}`}
+                        onDoubleClick={(event) => {
+                          event.preventDefault();
+                          updateVideoTrim({ startMs: 0 });
+                          seekStageTimeline(0);
+                        }}
+                        title={`Trim start: ${formatTimelineClock(videoTrimRange.startMs)}  •  Shift = 1s snap, Alt = 1ms precision, double-click = reset`}
                         aria-label="Trim video start"
                       >
                         <span className={styles.stageTimelineTrimGrip} aria-hidden="true" />
@@ -3336,7 +4057,13 @@ export function App() {
                         onPointerUp={endStageTimelineDrag}
                         onPointerCancel={endStageTimelineDrag}
                         onLostPointerCapture={endStageTimelineDrag}
-                        title={`Trim end: ${formatPlaybackTime(videoTrimRange.endMs)}`}
+                        onDoubleClick={(event) => {
+                          event.preventDefault();
+                          const endMs = Math.round(videoTimelineMaxMs);
+                          updateVideoTrim({ endMs });
+                          seekStageTimeline(endMs);
+                        }}
+                        title={`Trim end: ${formatTimelineClock(videoTrimRange.endMs)}  •  Shift = 1s snap, Alt = 1ms precision, double-click = reset`}
                         aria-label="Trim video end"
                       >
                         <span className={styles.stageTimelineTrimGrip} aria-hidden="true" />
@@ -3407,6 +4134,14 @@ export function App() {
           backgroundAnimationEnabled={backgroundAnimationEnabled}
           onBackgroundAnimationChange={(enabled) =>
             updateActiveExport({ animateBackground: enabled })
+          }
+          onBackgroundAnimationSpeedChange={(speed) =>
+            updateActiveBackground({
+              animation: {
+                ...activeCard.background.animation,
+                speed
+              }
+            })
           }
           onPaletteChange={(patch) =>
             updateActiveBackground({

@@ -16,6 +16,51 @@ test('renders the Mantle editor shell', async ({ page }) => {
   await expect(page.getByText('Drop media', { exact: true })).toBeVisible();
   await expect(page.getByText('Canvas size', { exact: true })).toBeVisible();
   await expect(page.getByText('Styles', { exact: true })).toBeVisible();
+  const smokeThumbnail = page.getByTestId('style-thumbnail-smoke-veil');
+  await expect(smokeThumbnail).toHaveAttribute(
+    'data-thumbnail-status',
+    'ready',
+    { timeout: 10_000 }
+  );
+  const smokeThumbnailMetrics = await smokeThumbnail.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const image = node.querySelector('img');
+
+    return {
+      width: rect.width,
+      height: rect.height,
+      naturalWidth: image?.naturalWidth ?? 0,
+      naturalHeight: image?.naturalHeight ?? 0
+    };
+  });
+  expect(smokeThumbnailMetrics.width).toBeGreaterThan(40);
+  expect(smokeThumbnailMetrics.naturalWidth).toBeGreaterThan(0);
+  expect(smokeThumbnailMetrics.width / smokeThumbnailMetrics.height).toBeCloseTo(
+    16 / 9,
+    1
+  );
+  expect(
+    smokeThumbnailMetrics.naturalWidth / smokeThumbnailMetrics.naturalHeight
+  ).toBeCloseTo(16 / 9, 1);
+  const imageThumbnail = page.getByTestId('style-thumbnail-image-background');
+  await expect(imageThumbnail).toHaveAttribute(
+    'data-thumbnail-variant',
+    'image'
+  );
+  const imageThumbnailStyle = await imageThumbnail.evaluate((node) => {
+    const fallback = node.querySelector('span');
+
+    return {
+      backgroundImage: getComputedStyle(node).backgroundImage,
+      fallbackBackgroundImage: fallback
+        ? getComputedStyle(fallback).backgroundImage
+        : '',
+      iconCount: node.querySelectorAll('svg').length
+    };
+  });
+  expect(imageThumbnailStyle.backgroundImage).not.toContain('radial-gradient');
+  expect(imageThumbnailStyle.fallbackBackgroundImage).toBe('none');
+  expect(imageThumbnailStyle.iconCount).toBe(1);
 });
 
 test('desktop app shell stays pinned to the viewport bottom edge', async ({ page }) => {
@@ -37,6 +82,41 @@ test('desktop app shell stays pinned to the viewport bottom edge', async ({ page
   expect(Math.abs(metrics.bottom - metrics.viewportHeight)).toBeLessThanOrEqual(1);
 });
 
+test('motion export popover groups format, size, motion, and quality settings', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Motion', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Animation', exact: true })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: /Backdrop motion/ })).toBeChecked();
+  await expect(page.getByRole('slider', { name: 'Motion speed' })).toBeVisible();
+  await page.getByRole('slider', { name: 'Motion speed' }).fill('1.5');
+  await expect(page.getByRole('slider', { name: 'Motion speed' })).toHaveValue('1.5');
+  await expect(page.getByRole('button', { name: '1.50×' })).toBeVisible();
+  await page.getByRole('button', { name: 'Download', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Download settings' });
+  await expect(dialog.getByText('Format', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Size', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Motion', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Quality', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('group', { name: 'MP4 presets' })).toBeVisible();
+  await expect(dialog.getByRole('checkbox', { name: /Audio/i })).toBeDisabled();
+});
+
+test('motion export blocks oversized MP4 settings before rendering', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Motion', exact: true }).click();
+  await page.getByRole('button', { name: 'Download', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Download settings' });
+  await dialog.getByRole('slider', { name: 'Scale' }).fill('5');
+
+  await expect(dialog.getByText('Export settings need changes')).toBeVisible();
+  await expect(dialog.getByText(/MP4 export is too large/i)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Download', exact: true })).toBeDisabled();
+});
+
 test('surface and style controls are available without social size presets', async ({ page }) => {
   await page.goto('/');
   await openSection(page, 'Canvas size');
@@ -47,9 +127,8 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByRole('button', { name: '9:16' })).toBeVisible();
   await expect(page.getByRole('button', { name: /LinkedIn feed/i })).toHaveCount(0);
 
-  await expect(page.getByText('Region count', { exact: true })).toBeVisible();
-  await expect(page.getByText('Edge sharpness', { exact: true })).toBeVisible();
-  await expect(page.getByText('Curve amount', { exact: true })).toBeVisible();
+  await expect(page.getByText('Smoke detail', { exact: true })).toBeVisible();
+  await expect(page.getByText('Glow', { exact: true })).toBeVisible();
   await expect(page.getByText('Grain', { exact: true })).toBeVisible();
   await expect(page.getByText('Outer padding', { exact: true })).toBeVisible();
   await expect(page.getByText('Inner padding', { exact: true })).toBeVisible();
@@ -84,8 +163,8 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByText('Render failed.', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'None', exact: true }).first().click();
   await expect(page.getByRole('slider', { name: 'Inner padding' })).toHaveCount(0);
-  await page.getByRole('slider', { name: 'Curve amount' }).fill('0');
-  await expect(page.getByRole('slider', { name: 'Curve amount' })).toHaveValue('0');
+  await page.getByRole('slider', { name: 'Smoke detail' }).fill('0');
+  await expect(page.getByRole('slider', { name: 'Smoke detail' })).toHaveValue('0');
   await page.getByRole('button', { name: /Randomize/i }).click();
   await expect(page.getByText('Background randomized')).toHaveCount(0);
 
@@ -102,7 +181,7 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByRole('button', { name: /Aurora Gradient/i }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Contour Lines/i }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Dot Grid/i }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Default/i }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Studio Solid/i }).first()).toBeVisible();
   await expect(page.getByText('Line density', { exact: true })).toBeVisible();
   await expect(page.getByText('Relief', { exact: true })).toBeVisible();
   await expect(page.getByText('Accent glow', { exact: true })).toBeVisible();
@@ -118,7 +197,7 @@ test('surface and style controls are available without social size presets', asy
   await expect(page.getByRole('button', { name: /Randomize/i })).toHaveCount(0);
   await expect(page.getByText('Relief', { exact: true })).toHaveCount(0);
 
-  await page.getByRole('button', { name: /Default/i }).first().click();
+  await page.getByRole('button', { name: /Studio Solid/i }).first().click();
 
   await expect(page.getByText('Dot opacity', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Foreground', { exact: true })).toHaveCount(0);

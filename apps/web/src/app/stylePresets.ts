@@ -43,7 +43,7 @@ export const STYLE_GROUPS: StyleGroup[] = [
   },
   {
     label: 'Gradient',
-    presetIds: ['soft-gradient', 'aurora-gradient', 'marbling', 'smoke-veil']
+    presetIds: ['smoke-veil', 'soft-gradient', 'aurora-gradient', 'marbling']
   },
   {
     label: 'Glyph',
@@ -58,7 +58,7 @@ export const STYLE_GROUPS: StyleGroup[] = [
 export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'default-solid',
-    label: 'Default',
+    label: 'Studio Solid',
     hint: 'Studio paper · soft accent wash',
     background: {
       family: 'solid',
@@ -138,6 +138,9 @@ export const STYLE_PRESETS: StylePreset[] = [
         spread: 1.05,
         grain: 0.05
       },
+      animation: {
+        speed: 0.7
+      },
       colors: ['#0c1626', '#3aa07c', '#7ad6c4', '#a78dc6'],
       palette: {
         background: '#06080f',
@@ -179,6 +182,9 @@ export const STYLE_PRESETS: StylePreset[] = [
         curve: 1,
         grain: 0.05
       },
+      animation: {
+        speed: 0.45
+      },
       colors: ['#050505', '#f5f5f5', '#252525', '#d8d8d8', '#737373', '#ffffff'],
       palette: {
         background: '#050505',
@@ -219,6 +225,9 @@ export const STYLE_PRESETS: StylePreset[] = [
         thickness: 0.34,
         glow: 0.86
       },
+      animation: {
+        speed: 0.9
+      },
       palette: {
         background: '#01020a',
         foreground: '#f6fbff',
@@ -258,6 +267,9 @@ export const STYLE_PRESETS: StylePreset[] = [
         waveHeight: 0.58,
         glow: 0.84
       },
+      animation: {
+        speed: 0.7
+      },
       palette: {
         background: '#020204',
         foreground: '#f4fff8',
@@ -293,6 +305,9 @@ export const STYLE_PRESETS: StylePreset[] = [
         sweepGlow: 0.62,
         glow: 0.78
       },
+      animation: {
+        speed: 1
+      },
       palette: {
         background: '#030609',
         foreground: '#edfff8',
@@ -317,21 +332,24 @@ export const STYLE_PRESETS: StylePreset[] = [
   {
     id: 'smoke-veil',
     label: 'Smoke Veil',
-    hint: 'Dark smoke · soft grain',
+    hint: 'Dark smoke · white glass glow',
     background: {
       family: 'mesh',
       presetId: 'smoke-veil',
       seed: 'smoke-veil',
-      intensity: 0.58,
+      intensity: 0.6,
       params: {
-        details: 0.62,
-        glow: 0.58,
+        details: 0.68,
+        glow: 0.66,
         grain: 0.08
+      },
+      animation: {
+        speed: 0.65
       },
       palette: {
         background: '#060609',
-        foreground: '#e8ebff',
-        accent: '#8b7dff',
+        foreground: '#f2f4ff',
+        accent: '#9a8cff',
         muted: '#3d6a76'
       }
     },
@@ -339,15 +357,15 @@ export const STYLE_PRESETS: StylePreset[] = [
       preset: 'minimal-browser',
       boxStyle: 'glass-panel',
       boxColor: '#ffffff',
-      boxOpacity: 0.18,
+      boxOpacity: 0.16,
       glassBlur: 5,
-      glassOutlineOpacity: 0.16,
-      padding: 114,
+      glassOutlineOpacity: 0.24,
+      padding: 116,
       contentPadding: 32,
-      cornerRadius: 24,
-      shadowColor: '#000000',
-      shadowStrength: 1.05,
-      shadowSoftness: 1.18,
+      cornerRadius: 22,
+      shadowColor: '#ffffff',
+      shadowStrength: 0.95,
+      shadowSoftness: 1.1,
       shadowDistance: 1,
       alignment: 'center'
     },
@@ -366,6 +384,9 @@ export const STYLE_PRESETS: StylePreset[] = [
         scanlineDensity: 0.4,
         glyphDensity: 0.2,
         sweepGlow: 0.32
+      },
+      animation: {
+        speed: 1.1
       },
       palette: {
         background: '#08090d',
@@ -480,6 +501,15 @@ function getDefaultBackgroundColorsForPreset(
   };
 }
 
+function getDefaultBackgroundAnimationForPreset(
+  presetId: MantleBackgroundPresetId
+): MantleBackground['animation'] {
+  const preset = STYLE_PRESETS.find((item) => item.background.presetId === presetId);
+  return preset?.background.animation
+    ? { ...preset.background.animation }
+    : undefined;
+}
+
 export function resetBackgroundColors(background: MantleBackground): MantleBackground {
   const defaults = getDefaultBackgroundColorsForPreset(background.presetId);
   if (!defaults) return background;
@@ -495,6 +525,7 @@ export function cloneBackground(background: MantleBackground): MantleBackground 
   return {
     ...background,
     params: background.params ? { ...background.params } : undefined,
+    animation: background.animation ? { ...background.animation } : undefined,
     palette: { ...background.palette },
     colors: background.colors ? [...background.colors] : undefined
   };
@@ -530,6 +561,7 @@ export function createBackgroundForPreset(
     family: MANTLE_BACKGROUND_PRESET_FAMILY[presetId],
     presetId,
     params: getBackgroundPresetDefaultParams(presetId),
+    animation: getDefaultBackgroundAnimationForPreset(presetId),
     colors: undefined,
     imageAssetId: undefined
   };

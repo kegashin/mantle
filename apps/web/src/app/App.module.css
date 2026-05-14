@@ -337,18 +337,16 @@
 
 .exportPopoverHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-bottom: 4px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--color-hairline);
 }
 
 .exportPopoverHeader > div {
   display: grid;
-  gap: 3px;
   min-width: 0;
-  padding-bottom: 8px;
 }
 
 .exportPopoverTitle {
@@ -356,12 +354,6 @@
   font-size: var(--type-md);
   font-weight: 600;
   letter-spacing: -0.005em;
-}
-
-.exportPopoverHint {
-  color: var(--color-text-dim);
-  font-size: var(--type-xxs);
-  line-height: 1.4;
 }
 
 .exportCloseButton {
@@ -385,8 +377,8 @@
 
 .exportSection {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 9px;
+  padding: 10px 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.18);
@@ -413,7 +405,7 @@
 
 .exportSectionBody {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .exportTextField {
@@ -474,6 +466,16 @@
   color: var(--color-text);
 }
 
+.exportSegmentedOption:disabled {
+  cursor: not-allowed;
+  opacity: 0.36;
+}
+
+.exportSegmentedOption:disabled:hover {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
 .exportSegmentedOption:focus-visible {
   outline: none;
   box-shadow: var(--control-glow);
@@ -482,6 +484,66 @@
 .exportSegmentedOptionActive {
   background: var(--control-active-bg);
   color: var(--color-text);
+  box-shadow: var(--control-active-shadow);
+}
+
+.exportPresetGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.exportPresetButton {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 8px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
+  color: var(--color-text-dim);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.exportPresetButton:hover:not(:disabled) {
+  border-color: var(--color-hairline-strong);
+  background: var(--control-hover);
+  color: var(--color-text);
+}
+
+.exportPresetButton:focus-visible {
+  outline: none;
+  box-shadow: var(--control-glow);
+}
+
+.exportPresetButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.36;
+}
+
+.exportPresetButton strong {
+  color: var(--color-text);
+  font-size: var(--type-xs);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.exportPresetButton span {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  line-height: 1.2;
+}
+
+.exportPresetButtonActive {
+  border-color: var(--color-hairline-active);
+  background: var(--control-active-bg);
   box-shadow: var(--control-active-shadow);
 }
 
@@ -672,7 +734,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 9px 11px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 10px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
   background: var(--control-bg);
@@ -682,10 +746,47 @@
 }
 
 .exportSummary strong {
+  min-width: 0;
+  overflow: hidden;
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  font-weight: 500;
+  font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exportTimelineSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--color-hairline);
+  box-shadow: var(--control-inset-shadow);
+}
+
+.exportTimelineSummary > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 9px;
+  background: var(--control-bg);
+  color: var(--color-text-dim);
+  font-size: var(--type-xxs);
+}
+
+.exportTimelineSummary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -694,7 +795,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 9px 11px;
+  min-height: 38px;
+  padding: 7px 10px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
   background: var(--control-bg);
@@ -720,107 +822,92 @@
 }
 
 .exportToggle input {
+  --switch-w: 42px;
+  --switch-h: 24px;
+  --thumb-d: 18px;
+  --thumb-pad: 3px;
+
   appearance: none;
   -webkit-appearance: none;
   position: relative;
-  width: 42px;
-  height: 24px;
+  width: var(--switch-w);
+  height: var(--switch-h);
   flex: 0 0 auto;
-  overflow: hidden;
-  border: 1px solid rgba(246, 245, 242, 0.15);
+  border: 1px solid var(--color-hairline);
   border-radius: var(--radius-pill);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0)),
-    rgba(0, 0, 0, 0.44);
+  background: var(--control-bg);
   box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.82),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.035),
-    0 1px 0 rgba(255, 255, 255, 0.035);
+    inset 0 1px 2px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
   cursor: pointer;
   transition:
     border-color var(--dur-fast) var(--ease-out),
-    background var(--dur-fast) var(--ease-out),
+    background var(--dur-base) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .exportToggle input::before {
   content: "";
   position: absolute;
-  left: 3px;
+  left: var(--thumb-pad);
   top: 50%;
   z-index: 1;
-  width: 18px;
-  height: 18px;
+  width: var(--thumb-d);
+  height: var(--thumb-d);
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 25%, #ffffff 0%, #f2f0eb 42%, #d8d4ca 100%);
+  background: linear-gradient(180deg, #fbfaf6 0%, #d6d2c9 100%);
   box-shadow:
-    0 3px 7px rgba(0, 0, 0, 0.62),
-    0 0 0 1px rgba(0, 0, 0, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.16),
+    0 0 0 1px rgba(0, 0, 0, 0.38),
+    0 1px 2px rgba(0, 0, 0, 0.42),
+    0 2px 4px -1px rgba(0, 0, 0, 0.35);
   transform: translate(0, -50%);
   transition:
     transform var(--dur-base) var(--ease-out),
+    background var(--dur-base) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.exportToggle input::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  border-radius: var(--radius-pill);
-  background:
-    linear-gradient(90deg, rgba(246, 245, 242, 0.2), rgba(246, 245, 242, 0.04));
-  opacity: 0;
-  transform: translateX(-8px);
-  transition:
-    opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-base) var(--ease-out);
-}
-
-.exportToggle input:hover {
-  border-color: rgba(246, 245, 242, 0.24);
-  box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.82),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.045),
-    var(--control-glow);
+.exportToggle input:hover:not(:disabled) {
+  border-color: var(--color-hairline-strong);
 }
 
 .exportToggle input:focus-visible {
   outline: none;
-  border-color: rgba(246, 245, 242, 0.3);
   box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.82),
-    var(--control-glow-strong);
+    inset 0 1px 2px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    var(--control-glow);
 }
 
 .exportToggle input:checked {
-  border-color: rgba(246, 245, 242, 0.34);
+  border-color: rgba(230, 181, 114, 0.42);
   background:
-    linear-gradient(180deg, rgba(246, 245, 242, 0.24), rgba(246, 245, 242, 0.07)),
-    rgba(246, 245, 242, 0.1);
+    linear-gradient(180deg, rgba(230, 181, 114, 0.32), rgba(230, 181, 114, 0.14));
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.08),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.46),
-    0 0 18px rgba(246, 245, 242, 0.08);
+    inset 0 1px 2px rgba(60, 35, 5, 0.32),
+    inset 0 -1px 0 rgba(255, 220, 170, 0.14),
+    0 0 12px rgba(230, 181, 114, 0.18);
 }
 
 .exportToggle input:checked::before {
-  transform: translate(18px, -50%);
+  transform: translate(
+    calc(var(--switch-w) - var(--thumb-d) - var(--thumb-pad) * 2),
+    -50%
+  );
 }
 
-.exportToggle input:checked::after {
-  opacity: 1;
-  transform: translateX(0);
+.exportToggle input:active:not(:disabled)::before {
+  transform: translate(0, -50%) scale(0.94);
 }
 
-.exportToggle input:active::before {
-  transform: translate(1px, -50%) scale(0.94);
-}
-
-.exportToggle input:checked:active::before {
-  transform: translate(17px, -50%) scale(0.94);
+.exportToggle input:checked:active:not(:disabled)::before {
+  transform: translate(
+    calc(var(--switch-w) - var(--thumb-d) - var(--thumb-pad) * 2),
+    -50%
+  )
+  scale(0.94);
 }
 
 .exportToggle input:disabled {
@@ -828,9 +915,36 @@
   cursor: default;
 }
 
-.exportToggle input:disabled:hover {
-  border-color: var(--color-hairline-strong);
+.exportNoticeStack {
+  display: grid;
+  gap: 8px;
+}
+
+.exportNotice {
+  display: grid;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid rgba(230, 181, 114, 0.28);
+  border-radius: var(--radius-sm);
+  background: rgba(230, 181, 114, 0.08);
+  color: var(--color-text-muted);
   box-shadow: var(--control-inset-shadow);
+}
+
+.exportNotice strong {
+  color: var(--color-text);
+  font-size: var(--type-xs);
+  font-weight: 600;
+}
+
+.exportNotice span {
+  font-size: var(--type-xxs);
+  line-height: 1.4;
+}
+
+.exportNoticeError {
+  border-color: rgba(255, 103, 103, 0.32);
+  background: rgba(255, 103, 103, 0.08);
 }
 
 .exportPopoverActions {
@@ -977,9 +1091,11 @@
 .presetCard {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
-  padding: 10px 12px 10px 14px;
+  gap: 10px;
+  min-height: 58px;
+  padding: 8px 12px 8px 14px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
   background: var(--elev-1);
@@ -1017,6 +1133,70 @@
 
 .presetCardActive::after {
   content: none;
+}
+
+.presetThumbnail {
+  position: relative;
+  display: block;
+  width: 48px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-2xs);
+  background:
+    radial-gradient(circle at 25% 20%, var(--preset-thumbnail-foreground), transparent 28%),
+    radial-gradient(circle at 72% 72%, var(--preset-thumbnail-accent), transparent 34%),
+    var(--preset-thumbnail-background);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 8px 18px -14px rgba(0, 0, 0, 0.9);
+}
+
+.presetThumbnail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.presetThumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.presetThumbnailImage {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.presetThumbnailFallback {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 42%),
+    linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.22));
+}
+
+.presetThumbnailImage .presetThumbnailFallback {
+  display: grid;
+  place-items: center;
+  background: none;
+}
+
+.presetThumbnailImageIcon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  color: rgba(255, 255, 255, 0.86);
+  background: transparent;
+  box-shadow: none;
 }
 
 .presetLabel {
@@ -1129,6 +1309,9 @@
 }
 
 .savedPresetImportMenu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   height: 30px;
   padding: 0 9px;
   border: 0;
@@ -1357,11 +1540,12 @@
 .stageTimelineDock {
   display: grid;
   grid-template-rows: 36px 1fr;
-  min-height: 132px;
-  border-top: 1px solid var(--color-hairline);
+  min-height: 134px;
+  border-top: 1px solid var(--color-hairline-strong);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent 28%),
-    rgba(8, 8, 11, 0.72);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028) 0, transparent 14%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.32)),
+    rgba(8, 8, 11, 0.78);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
@@ -1372,7 +1556,10 @@
   min-width: 0;
   padding: 4px 14px 4px 12px;
   border-bottom: 1px solid var(--color-hairline);
-  background: rgba(5, 5, 7, 0.5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent 60%),
+    rgba(5, 5, 7, 0.55);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.32);
 }
 
 .stagePlayerButton {
@@ -1396,27 +1583,91 @@
   grid-auto-flow: column;
   gap: 6px;
   width: auto;
-  min-width: 58px;
-  padding: 0 9px;
+  min-width: 60px;
+  padding: 0 10px;
   font-size: var(--type-xs);
-  font-weight: 620;
+  font-weight: 560;
+  letter-spacing: -0.005em;
 }
 
 .stagePlayerTextButton span {
   line-height: 1;
 }
 
-.stagePlayerButton:hover,
-.stagePlayerButton:focus-visible {
+.stageTimelineMarkButton {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--elev-1);
+  color: var(--color-brand);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(230, 181, 114, 0.4);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    text-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.stageTimelineMarkButton:hover:not(:disabled),
+.stageTimelineMarkButton:focus-visible:not(:disabled) {
+  border-color: rgba(230, 181, 114, 0.42);
+  background: var(--color-brand-soft);
+  color: var(--color-brand-strong);
+  text-shadow: 0 0 12px rgba(230, 181, 114, 0.7);
+  outline: none;
+}
+
+.stageTimelineMarkButton:active:not(:disabled) {
+  transform: translateY(0.5px);
+  background: var(--elev-1);
+}
+
+.stageTimelineMarkButton:disabled {
+  border-color: var(--color-hairline);
+  background: transparent;
+  color: var(--color-text-dim);
+  text-shadow: none;
+  cursor: default;
+  opacity: 0.45;
+}
+
+.stagePlayerButton:hover:not(:disabled) {
   border-color: var(--color-hairline-strong);
   background: var(--control-hover);
   color: var(--color-text);
+}
+
+.stagePlayerButton:focus-visible {
+  outline: none;
+  border-color: var(--control-focus);
+  background: var(--control-hover);
+  color: var(--color-text);
+  box-shadow: var(--control-glow);
+}
+
+.stagePlayerButton:active:not(:disabled) {
+  background: var(--control-bg-strong);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.32);
 }
 
 .stagePlayerButtonActive {
   background: var(--control-active-bg);
   color: var(--color-text);
   box-shadow: var(--control-active-shadow);
+}
+
+.stagePlayerButtonActive:hover:not(:disabled) {
+  background: var(--control-active-bg);
 }
 
 .stagePlayerButton:disabled {
@@ -1434,7 +1685,7 @@
 .stageTimelineStatus {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
   min-width: 0;
   margin-right: auto;
 }
@@ -1442,56 +1693,130 @@
 .stageTimelineStatusPrimary {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  min-width: 122px;
-  padding: 0 8px;
+  gap: 6px;
+  min-width: 124px;
+  padding: 0 10px;
   height: 26px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-xs);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--control-field-bg);
+  box-shadow: var(--control-field-shadow);
   color: var(--color-text-soft);
   font-family: var(--font-mono);
   font-size: var(--type-xxs);
-  letter-spacing: 0.01em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 .stageTimelineStatusPrimary span {
   color: var(--color-text-dim);
+  opacity: 0.7;
 }
 
-.stageTimelineStatusMeta {
+/* ---------- Editable trim range row ---------- */
+
+.stageTimelineRangeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   color: var(--color-text-dim);
   font-family: var(--font-mono);
   font-size: var(--type-xxs);
   white-space: nowrap;
 }
 
-.stageTimelineBody {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  min-height: 0;
-}
 
-.stageTimelineTrackLabels {
-  display: grid;
-  grid-template-rows: 30px 70px;
-  border-right: 1px solid var(--color-hairline);
-  background: rgba(0, 0, 0, 0.14);
-}
-
-.stageTimelineTrackLabel {
-  display: flex;
+.stageTimelineRangeChip {
+  display: inline-flex;
   align-items: center;
-  padding: 0 11px;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--elev-1);
+  color: var(--color-text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--type-xxs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  cursor: text;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.stageTimelineRangeChip > span {
   color: var(--color-text-dim);
   font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.02em;
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.stageTimelineTrackLabel:first-child {
-  grid-row: 2;
+.stageTimelineRangeChip > strong {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.stageTimelineRangeChip:hover {
+  border-color: var(--color-hairline-strong);
+  background: var(--elev-2);
+  color: var(--color-text);
+}
+
+.stageTimelineRangeChip:focus-visible {
+  outline: none;
+  border-color: var(--control-focus);
+  box-shadow: var(--control-glow);
+}
+
+.stageTimelineRangeInput {
+  width: 78px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--control-focus);
+  border-radius: var(--radius-xs);
+  background: var(--control-bg-strong);
+  box-shadow:
+    var(--control-inset-shadow),
+    var(--control-glow);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--type-xxs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  outline: none;
+  text-align: center;
+}
+
+.stageTimelineRangeDash {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--type-xxs);
+}
+
+.stageTimelineRangeDuration {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid var(--color-hairline);
   color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xxs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.stageTimelineBody {
+  display: block;
+  min-height: 0;
 }
 
 .stageTimelineCanvas {
@@ -1507,9 +1832,19 @@
 
 .stageTimelineRuler {
   position: relative;
-  height: 30px;
+  height: 26px;
   border-bottom: 1px solid var(--color-hairline);
-  background: rgba(0, 0, 0, 0.14);
+  background:
+    /* Minor sub-ticks: 1px lines every 32px at bottom, 4px tall. Visual rhythm. */
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.07) 0 1px,
+      transparent 1px 32px
+    )
+    0 100% / 32px 4px repeat-x,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 50%),
+    rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.32);
 }
 
 .stageTimelineTick {
@@ -1517,23 +1852,41 @@
   top: 0;
   height: 100%;
   padding-left: 7px;
-  border-left: 1px solid rgba(246, 245, 242, 0.11);
-  color: var(--color-text-dim);
+  color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: 0.62rem;
-  line-height: 30px;
+  font-variant-numeric: tabular-nums;
+  line-height: 26px;
+  letter-spacing: 0.02em;
   transform: translateX(-1px);
   white-space: nowrap;
 }
 
+/* Major tick line spans the full ruler height */
+.stageTimelineTick::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    transparent 0 8px,
+    rgba(255, 255, 255, 0.14) 8px 100%
+  );
+}
+
+/* Bottom anchor — accent line at base */
 .stageTimelineTick::after {
   content: "";
   position: absolute;
   left: -1px;
   bottom: 0;
   width: 1px;
-  height: 7px;
-  background: rgba(246, 245, 242, 0.18);
+  height: 8px;
+  background: var(--color-brand);
+  opacity: 0.45;
 }
 
 .stageTimelineTrack {
@@ -1552,30 +1905,74 @@
   pointer-events: none;
 }
 
+/* Full-width track surface (visual base) */
 .stageTimelineTrack::before {
   left: 12px;
   right: 12px;
   top: 14px;
   height: 40px;
-  border: 1px dashed rgba(246, 245, 242, 0.08);
+  border: 1px solid var(--color-hairline);
   border-radius: var(--radius-xs);
-  background: rgba(0, 0, 0, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(0, 0, 0, 0.18)),
+    rgba(0, 0, 0, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4);
 }
 
+/* Played-so-far region: from clip start to playhead, brand-tinted highlight */
 .stageTimelineTrack::after {
   left: var(--stage-timeline-clip-start);
   right: calc(100% - var(--stage-timeline-playhead));
   top: 17px;
   z-index: 3;
   height: 34px;
-  border-radius: var(--radius-xs);
-  background: linear-gradient(90deg, rgba(232, 197, 138, 0.16), rgba(232, 197, 138, 0.03));
+  border-radius: var(--radius-2xs);
+  background: linear-gradient(
+    90deg,
+    rgba(230, 181, 114, 0.22),
+    rgba(230, 181, 114, 0.05)
+  );
   mix-blend-mode: screen;
 }
 
 .stageTimelineTrack:focus-visible {
-  outline: 1px solid rgba(246, 245, 242, 0.32);
+  outline: 1px solid rgba(230, 181, 114, 0.36);
   outline-offset: -2px;
+}
+
+/* Trimmed-out regions (outside in/out) — subtle hatched dim, signals "cut" */
+.stageTimelineTrimmed {
+  position: absolute;
+  top: 14px;
+  height: 40px;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: var(--radius-2xs);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(0, 0, 0, 0.38) 0 5px,
+      rgba(0, 0, 0, 0.18) 5px 10px
+    );
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32);
+  opacity: 0.7;
+}
+
+.stageTimelineTrimmedStart {
+  left: 12px;
+  right: calc(100% - var(--stage-timeline-clip-start));
+}
+
+.stageTimelineTrimmedEnd {
+  left: var(--stage-timeline-clip-end);
+  right: 12px;
+}
+
+/* When trim is "full" (matches source bounds), hide overlays */
+.stageTimelineTrimmedHidden {
+  display: none;
 }
 
 .stageTimelineClip {
@@ -1627,22 +2024,37 @@
 .stageTimelineClipFrames {
   position: absolute;
   inset: 0;
-  opacity: 0.28;
+  opacity: 0.42;
   background:
-    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.18) 0 2px, transparent 2px 18px),
-    radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.16), transparent 24%),
-    radial-gradient(circle at 55% 45%, rgba(255, 255, 255, 0.12), transparent 22%),
-    radial-gradient(circle at 84% 55%, rgba(255, 255, 255, 0.14), transparent 25%);
+    /* Frame separators: thin vertical strokes every 26px */
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 25px,
+      rgba(0, 0, 0, 0.28) 25px 26px
+    ),
+    /* Alternating frame brightness — gentle even/odd tonal beat */
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018) 0 26px,
+      rgba(0, 0, 0, 0.04) 26px 52px
+    ),
+    /* Top and bottom film strip edges (sprocket lane) */
+    linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.28) 0 2px,
+      transparent 2px calc(100% - 2px),
+      rgba(0, 0, 0, 0.28) calc(100% - 2px) 100%
+    );
 }
 
 .stageTimelineTrimHandle {
   position: absolute;
-  top: 0;
+  top: -4px;
+  bottom: -4px;
   z-index: 6;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 100%;
+  width: 32px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1651,46 +2063,76 @@
   touch-action: none;
 }
 
+/* Invisible hit-area extending outside the clip — easier to grab */
+.stageTimelineTrimHandle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+}
+
 .stageTimelineTrimHandleStart {
   left: 0;
+}
+
+.stageTimelineTrimHandleStart::before {
+  right: 100%;
 }
 
 .stageTimelineTrimHandleEnd {
   right: 0;
 }
 
+.stageTimelineTrimHandleEnd::before {
+  left: 100%;
+}
+
 .stageTimelineTrimGrip {
   position: relative;
   display: block;
-  width: 9px;
-  height: 24px;
+  width: 10px;
+  height: 28px;
   border: 1px solid rgba(0, 0, 0, 0.48);
   border-radius: 999px;
   background:
-    linear-gradient(90deg, transparent 0 2px, rgba(0, 0, 0, 0.22) 2px 3px, transparent 3px 6px, rgba(0, 0, 0, 0.22) 6px 7px, transparent 7px),
+    linear-gradient(90deg, transparent 0 2.5px, rgba(0, 0, 0, 0.24) 2.5px 3.5px, transparent 3.5px 6.5px, rgba(0, 0, 0, 0.24) 6.5px 7.5px, transparent 7.5px),
     rgba(246, 245, 242, 0.98);
   box-shadow:
     0 0 0 2px rgba(8, 8, 11, 0.68),
     0 9px 18px -9px rgba(0, 0, 0, 0.92);
+  transition:
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .stageTimelineTrimHandle:hover .stageTimelineTrimGrip,
 .stageTimelineTrimHandle:focus-visible .stageTimelineTrimGrip {
   background: #fff;
+  transform: scaleY(1.06);
   box-shadow:
     0 0 0 2px rgba(8, 8, 11, 0.72),
-    0 0 0 4px rgba(232, 197, 138, 0.2),
-    0 0 16px rgba(232, 197, 138, 0.24),
+    0 0 0 4px rgba(230, 181, 114, 0.22),
+    0 0 18px rgba(230, 181, 114, 0.28),
     0 6px 16px -8px rgba(0, 0, 0, 0.9);
+}
+
+.stageTimelineTrimHandle:active .stageTimelineTrimGrip {
+  transform: scaleY(1.1);
+  box-shadow:
+    0 0 0 2px rgba(8, 8, 11, 0.78),
+    0 0 0 5px rgba(230, 181, 114, 0.36),
+    0 0 22px rgba(230, 181, 114, 0.4),
+    0 6px 16px -8px rgba(0, 0, 0, 0.92);
 }
 
 .stageTimelinePlayhead {
   position: absolute;
   left: var(--stage-timeline-playhead);
-  top: -32px;
+  top: -28px;
   bottom: 0;
   z-index: 7;
-  width: 58px;
+  width: 60px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1703,13 +2145,13 @@
   content: "";
   position: absolute;
   left: 50%;
-  top: 28px;
+  top: 24px;
   bottom: 0;
   width: 2px;
-  background: var(--color-accent-warm);
+  background: var(--color-brand);
   box-shadow:
-    0 0 0 1px rgba(232, 197, 138, 0.18),
-    0 0 18px rgba(232, 197, 138, 0.24);
+    0 0 0 1px rgba(230, 181, 114, 0.2),
+    0 0 18px rgba(230, 181, 114, 0.28);
   transform: translateX(-50%);
 }
 
@@ -1721,45 +2163,74 @@
   position: absolute;
   left: 50%;
   top: 2px;
-  min-width: 48px;
-  padding: 3px 6px;
-  border: 1px solid rgba(232, 197, 138, 0.28);
+  min-width: 50px;
+  padding: 3px 7px;
+  border: 1px solid rgba(230, 181, 114, 0.34);
   border-radius: var(--radius-xs);
-  background: rgba(16, 14, 12, 0.86);
-  color: #fff3d6;
+  background:
+    linear-gradient(180deg, rgba(36, 28, 16, 0.94), rgba(16, 14, 12, 0.94));
+  color: #ffe3b8;
   font-family: var(--font-mono);
   font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
+  letter-spacing: 0.02em;
   text-align: center;
   box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 0 0 1px rgba(0, 0, 0, 0.32),
-    0 8px 18px -12px rgba(232, 197, 138, 0.5);
+    0 8px 18px -12px rgba(230, 181, 114, 0.55);
   transform: translateX(-50%);
   pointer-events: none;
+}
+
+.stageTimelinePlayheadLabel::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: 4px;
+  background: rgba(230, 181, 114, 0.34);
+  transform: translateX(-50%);
 }
 
 .stageTimelinePlayheadKnob {
   position: absolute;
   left: 50%;
-  top: 24px;
-  width: 18px;
-  height: 18px;
+  top: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: var(--color-accent-warm);
+  background:
+    radial-gradient(circle at 35% 30%, #ffe3b8 0%, var(--color-brand) 60%, #c89958 100%);
   box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
     0 0 0 3px rgba(8, 8, 11, 0.78),
-    0 0 18px rgba(232, 197, 138, 0.28);
+    0 0 16px rgba(230, 181, 114, 0.36);
   transform: translateX(-50%);
   pointer-events: none;
+  transition: box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .stageTimelinePlayhead:hover .stageTimelinePlayheadKnob,
 .stageTimelinePlayhead:focus-visible .stageTimelinePlayheadKnob {
-  background: #fff3d6;
   box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
     0 0 0 3px rgba(8, 8, 11, 0.82),
-    0 0 0 5px rgba(232, 197, 138, 0.18),
-    0 0 22px rgba(232, 197, 138, 0.34);
+    0 0 0 6px rgba(230, 181, 114, 0.22),
+    0 0 24px rgba(230, 181, 114, 0.42);
+}
+
+.stageTimelinePlayhead:active .stageTimelinePlayheadKnob {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 0 0 3px rgba(8, 8, 11, 0.84),
+    0 0 0 7px rgba(230, 181, 114, 0.34),
+    0 0 26px rgba(230, 181, 114, 0.5);
 }
 
 .stageTimelinePlayhead:active {

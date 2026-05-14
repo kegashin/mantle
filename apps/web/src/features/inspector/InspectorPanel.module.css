@@ -102,7 +102,8 @@
   padding: 10px 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .identityLabel {
@@ -197,13 +198,14 @@
   padding: 0 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--control-field-bg);
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: var(--type-xs);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
   outline: none;
+  box-shadow: var(--control-field-shadow);
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
@@ -218,24 +220,36 @@
 
 .dimensionField input:hover {
   border-color: var(--color-hairline-strong);
+  background: var(--control-field-bg-hover);
 }
 
 .dimensionField input:focus {
   border-color: var(--color-hairline-active);
-  background: rgba(0, 0, 0, 0.42);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  background: var(--control-field-bg-focus);
+  box-shadow: var(--control-field-shadow), 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Sliders / params ---------- */
 
-.parameterStack {
+.controlGroup {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 9px;
+  padding: 11px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
   background: var(--control-bg);
   box-shadow: var(--control-inset-shadow);
+}
+
+.controlGroupTitle {
+  color: var(--color-text-dim);
+  font-size: var(--type-xxs);
+  letter-spacing: 0;
+}
+
+.controlGroupBody {
+  display: grid;
+  gap: 10px;
 }
 
 .slider {
@@ -261,13 +275,14 @@
   padding: 0 10px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-xs);
-  background: var(--control-bg-strong);
+  background: var(--control-field-bg);
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: var(--type-xs);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
+  box-shadow: var(--control-field-shadow);
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
@@ -299,13 +314,13 @@
 .slider:hover .sliderValueButton,
 .slider:focus-within .sliderValueButton {
   border-color: var(--color-hairline-strong);
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--control-field-bg-hover);
 }
 
 .sliderValueInput:focus {
   border-color: var(--color-hairline-active);
-  background: rgba(0, 0, 0, 0.42);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  background: var(--control-field-bg-focus);
+  box-shadow: var(--control-field-shadow), 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Custom range input ---------- */
@@ -522,6 +537,11 @@
   opacity: 0.45;
 }
 
+.backgroundAnimationControls {
+  display: grid;
+  gap: 9px;
+}
+
 .backgroundAnimationToggle {
   display: flex;
   align-items: center;
@@ -552,118 +572,100 @@
   line-height: 1.35;
 }
 
+/* ---------- Toggle switch — restrained tactile depth ---------- */
+
 .backgroundAnimationToggle input {
+  --switch-w: 42px;
+  --switch-h: 24px;
+  --thumb-d: 18px;
+  --thumb-pad: 3px;
+
   appearance: none;
   -webkit-appearance: none;
   position: relative;
-  width: 42px;
-  height: 24px;
+  width: var(--switch-w);
+  height: var(--switch-h);
   flex: 0 0 auto;
-  overflow: hidden;
-  border: 1px solid rgba(246, 245, 242, 0.15);
+  border: 1px solid var(--color-hairline);
   border-radius: var(--radius-pill);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0)),
-    rgba(0, 0, 0, 0.44);
+  background: var(--control-bg);
   box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.82),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.035),
-    0 1px 0 rgba(255, 255, 255, 0.035);
+    inset 0 1px 2px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
   cursor: pointer;
   transition:
     border-color var(--dur-fast) var(--ease-out),
-    background var(--dur-fast) var(--ease-out),
+    background var(--dur-base) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .backgroundAnimationToggle input::before {
   content: "";
   position: absolute;
-  left: 3px;
+  left: var(--thumb-pad);
   top: 50%;
   z-index: 1;
-  width: 18px;
-  height: 18px;
+  width: var(--thumb-d);
+  height: var(--thumb-d);
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 25%, #ffffff 0%, #f2f0eb 42%, #d8d4ca 100%);
+  background: linear-gradient(180deg, #fbfaf6 0%, #d6d2c9 100%);
   box-shadow:
-    0 3px 7px rgba(0, 0, 0, 0.62),
-    0 0 0 1px rgba(0, 0, 0, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.16),
+    0 0 0 1px rgba(0, 0, 0, 0.38),
+    0 1px 2px rgba(0, 0, 0, 0.42),
+    0 2px 4px -1px rgba(0, 0, 0, 0.35);
   transform: translate(0, -50%);
   transition:
     transform var(--dur-base) var(--ease-out),
+    background var(--dur-base) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.backgroundAnimationToggle input::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  border-radius: var(--radius-pill);
-  background:
-    linear-gradient(90deg, rgba(246, 245, 242, 0.2), rgba(246, 245, 242, 0.04));
-  opacity: 0;
-  transform: translateX(-8px);
-  transition:
-    opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-base) var(--ease-out);
-}
-
-.backgroundAnimationToggle input:hover {
-  border-color: rgba(246, 245, 242, 0.24);
-  box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.82),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.045),
-    var(--control-glow);
+.backgroundAnimationToggle input:hover:not(:disabled) {
+  border-color: var(--color-hairline-strong);
 }
 
 .backgroundAnimationToggle input:focus-visible {
   outline: none;
-  border-color: rgba(246, 245, 242, 0.3);
   box-shadow:
-    inset 0 1px 2px rgba(0, 0, 0, 0.82),
-    var(--control-glow-strong);
+    inset 0 1px 2px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    var(--control-glow);
 }
 
 .backgroundAnimationToggle input:checked {
-  border-color: rgba(246, 245, 242, 0.34);
+  border-color: rgba(230, 181, 114, 0.42);
   background:
-    linear-gradient(180deg, rgba(246, 245, 242, 0.24), rgba(246, 245, 242, 0.07)),
-    rgba(246, 245, 242, 0.1);
+    linear-gradient(180deg, rgba(230, 181, 114, 0.32), rgba(230, 181, 114, 0.14));
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.08),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.46),
-    0 0 18px rgba(246, 245, 242, 0.08);
+    inset 0 1px 2px rgba(60, 35, 5, 0.32),
+    inset 0 -1px 0 rgba(255, 220, 170, 0.14),
+    0 0 12px rgba(230, 181, 114, 0.18);
 }
 
 .backgroundAnimationToggle input:checked::before {
-  transform: translate(18px, -50%);
+  transform: translate(
+    calc(var(--switch-w) - var(--thumb-d) - var(--thumb-pad) * 2),
+    -50%
+  );
 }
 
-.backgroundAnimationToggle input:checked::after {
-  opacity: 1;
-  transform: translateX(0);
+.backgroundAnimationToggle input:active:not(:disabled)::before {
+  transform: translate(0, -50%) scale(0.94);
 }
 
-.backgroundAnimationToggle input:active::before {
-  transform: translate(1px, -50%) scale(0.94);
-}
-
-.backgroundAnimationToggle input:checked:active::before {
-  transform: translate(17px, -50%) scale(0.94);
+.backgroundAnimationToggle input:checked:active:not(:disabled)::before {
+  transform: translate(
+    calc(var(--switch-w) - var(--thumb-d) - var(--thumb-pad) * 2),
+    -50%
+  )
+  scale(0.94);
 }
 
 .backgroundAnimationToggle input:disabled {
   opacity: 0.42;
   cursor: default;
-}
-
-.backgroundAnimationToggle input:disabled:hover {
-  border-color: var(--color-hairline-strong);
-  box-shadow: var(--control-inset-shadow);
 }
 
 .backgroundImagePanel {
@@ -672,7 +674,8 @@
   padding: 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.14);
+  background: var(--control-bg);
+  box-shadow: var(--control-inset-shadow);
 }
 
 .backgroundImagePanelMissing {
@@ -864,13 +867,6 @@
 }
 
 /* ---------- Frame ---------- */
-
-.frameGroupLabel {
-  color: var(--color-text-dim);
-  font-size: var(--type-xxs);
-  letter-spacing: 0;
-  margin-top: 2px;
-}
 
 .frameList {
   display: grid;
@@ -1190,25 +1186,10 @@
   gap: 10px;
 }
 
-.textControlGroup {
-  display: grid;
-  gap: 7px;
-}
-
-.textControlGroupTitle {
-  color: var(--color-text-dim);
-  font-size: var(--type-xxs);
-  letter-spacing: 0;
-}
-
 .textStylePanel {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.16);
 }
 
 .textEmptyState {
@@ -1236,10 +1217,11 @@
   padding: 0 32px 0 11px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--control-field-bg);
   color: var(--color-text);
   font-size: var(--type-xs);
   outline: none;
+  box-shadow: var(--control-field-shadow);
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
@@ -1247,12 +1229,13 @@
 
 .selectField select:hover {
   border-color: var(--color-hairline-strong);
-  background: rgba(0, 0, 0, 0.34);
+  background: var(--control-field-bg-hover);
 }
 
 .selectField select:focus-visible {
   border-color: var(--color-hairline-active);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+  background: var(--control-field-bg-focus);
+  box-shadow: var(--control-field-shadow), 0 0 0 2px rgba(255, 255, 255, 0.08);
 }
 
 .textField {
@@ -1273,12 +1256,13 @@
   padding: 10px 12px;
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--control-field-bg);
   color: var(--color-text);
   font-size: var(--type-sm);
   font-family: var(--font-sans);
   line-height: 1.5;
   outline: none;
+  box-shadow: var(--control-field-shadow);
   transition:
     border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
@@ -1303,13 +1287,14 @@
 .textField input:hover,
 .textField textarea:hover {
   border-color: var(--color-hairline-strong);
+  background: var(--control-field-bg-hover);
 }
 
 .textField input:focus,
 .textField textarea:focus {
   border-color: var(--color-hairline-active);
-  background: rgba(0, 0, 0, 0.42);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  background: var(--control-field-bg-focus);
+  box-shadow: var(--control-field-shadow), 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Export summary ---------- */

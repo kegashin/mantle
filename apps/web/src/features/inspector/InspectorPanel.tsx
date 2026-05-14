@@ -5,6 +5,11 @@ import {
   resolveFrameBoxStyle,
   resolveBackgroundPresetDescriptor
 } from '@mantle/engine/catalog';
+import {
+  MANTLE_BACKGROUND_ANIMATION_SPEED_DEFAULT,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MAX,
+  MANTLE_BACKGROUND_ANIMATION_SPEED_MIN
+} from '@mantle/schemas/model';
 import type {
   MantleCard,
   MantleBackgroundParamId,
@@ -68,6 +73,7 @@ type InspectorPanelProps = {
   backgroundAnimationAvailable: boolean;
   backgroundAnimationEnabled: boolean;
   onBackgroundAnimationChange: (enabled: boolean) => void;
+  onBackgroundAnimationSpeedChange: (speed: number) => void;
   onPaletteChange: (patch: Partial<MantlePalette>) => void;
   onFramePresetChange: (preset: MantleFramePreset) => void;
   onFrameBoxStyleChange: (style: MantleFrameBoxStyle) => void;
@@ -329,6 +335,21 @@ function Section({
       </button>
       {open ? <div className={styles.sectionBody}>{children}</div> : null}
     </section>
+  );
+}
+
+function ControlGroup({
+  title,
+  children
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={styles.controlGroup}>
+      <div className={styles.controlGroupTitle}>{title}</div>
+      <div className={styles.controlGroupBody}>{children}</div>
+    </div>
   );
 }
 
@@ -653,6 +674,7 @@ export function InspectorPanel({
   backgroundAnimationAvailable,
   backgroundAnimationEnabled,
   onBackgroundAnimationChange,
+  onBackgroundAnimationSpeedChange,
   onPaletteChange,
   onFramePresetChange,
   onFrameBoxStyleChange,
@@ -705,6 +727,11 @@ export function InspectorPanel({
   const activeBackgroundPresetId = card.background.presetId;
   const activeBackgroundPreset = resolveBackgroundPresetDescriptor(
     activeBackgroundPresetId
+  );
+  const backgroundAnimationSpeed = clampNumber(
+    card.background.animation?.speed ?? MANTLE_BACKGROUND_ANIMATION_SPEED_DEFAULT,
+    MANTLE_BACKGROUND_ANIMATION_SPEED_MIN,
+    MANTLE_BACKGROUND_ANIMATION_SPEED_MAX
   );
   const isImageBackground = activeBackgroundPresetId === 'image-fill';
   const isImageBackgroundMissing =
@@ -845,26 +872,6 @@ export function InspectorPanel({
           <span className={styles.identityLabel}>{activeBackgroundPreset.label}</span>
           <span className={styles.identityHint}>{activeBackgroundPreset.hint}</span>
         </div>
-        {showBackgroundAnimationControl ? (
-          <label className={styles.backgroundAnimationToggle}>
-            <span>
-              <strong>Animation</strong>
-              <span>
-                {backgroundAnimationAvailable
-                  ? 'Animate this backdrop in motion preview and video export.'
-                  : 'This backdrop is static.'}
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={backgroundAnimationAvailable && backgroundAnimationEnabled}
-              disabled={!backgroundAnimationAvailable}
-              onChange={(event) =>
-                onBackgroundAnimationChange(event.currentTarget.checked)
-              }
-            />
-          </label>
-        ) : null}
         {isImageBackground ? (
           <div
             className={
@@ -920,7 +927,7 @@ export function InspectorPanel({
           </div>
         ) : null}
         {activeBackgroundPreset.params.length > 0 ? (
-          <div className={styles.parameterStack}>
+          <ControlGroup title="Settings">
             {activeBackgroundPreset.params.map((param) => (
               <Slider
                 key={param.id}
@@ -934,7 +941,7 @@ export function InspectorPanel({
                 onChange={(value) => onBackgroundParamChange(param.id, value)}
               />
             ))}
-          </div>
+          </ControlGroup>
         ) : null}
         {!isImageBackground ? (
           <div className={styles.backgroundActions}>
@@ -1035,268 +1042,318 @@ export function InspectorPanel({
             </div>
           </div>
         ) : (
-          <div className={paletteClassName}>
-            <ColorSwatch
-              label="Base"
-              value={palette.background}
-              onChange={(next) => onPaletteChange({ background: next })}
-            />
-            {showForegroundColor ? (
+          <ControlGroup title="Palette">
+            <div className={paletteClassName}>
               <ColorSwatch
-                label="Foreground"
-                value={palette.foreground}
-                onChange={(next) => onPaletteChange({ foreground: next })}
+                label="Base"
+                value={palette.background}
+                onChange={(next) => onPaletteChange({ background: next })}
               />
-            ) : null}
-            {showAccentColor ? (
-              <ColorSwatch
-                label="Accent"
-                value={palette.accent}
-                onChange={(next) => onPaletteChange({ accent: next })}
-              />
-            ) : null}
-          </div>
+              {showForegroundColor ? (
+                <ColorSwatch
+                  label="Foreground"
+                  value={palette.foreground}
+                  onChange={(next) => onPaletteChange({ foreground: next })}
+                />
+              ) : null}
+              {showAccentColor ? (
+                <ColorSwatch
+                  label="Accent"
+                  value={palette.accent}
+                  onChange={(next) => onPaletteChange({ accent: next })}
+                />
+              ) : null}
+            </div>
+          </ControlGroup>
         )}
       </Section>
 
-      <Section icon="frame" title="Frame" defaultOpen>
-        <div className={styles.frameGroupLabel}>Material</div>
-        <IconChoiceGrid
-          activeValue={activeFrameBoxStyle}
-          values={FRAME_BOX_STYLE_IDS}
-          labels={BOX_STYLE_LABELS}
-          onChange={onFrameBoxStyleChange}
-        />
-        {isGlassMaterial ? (
-          <Slider
-            label="Opacity"
-            min={0}
-            max={1}
-            step={0.01}
-            value={card.frame.boxOpacity ?? CSS_GLASS_FRAME_DEFAULTS.boxOpacity}
-            format={formatPercent}
-            editScale={100}
-            onChange={(boxOpacity) => onFrameMaterialChange({ boxOpacity })}
-          />
-        ) : null}
-        {isGlassMaterial ? (
-          <Slider
-            label="Blur"
-            min={0}
-            max={5}
-            step={0.1}
-            value={card.frame.glassBlur ?? CSS_GLASS_FRAME_DEFAULTS.glassBlur}
-            format={formatFractionalPx}
-            onChange={(glassBlur) => onFrameMaterialChange({ glassBlur })}
-          />
-        ) : null}
-        {activeFrameBoxStyle === 'solid' || isGlassMaterial ? (
-          <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
-            <ColorSwatch
-              label={frameColorLabel}
-              value={card.frame.boxColor ?? defaultBoxColor(activeFrameBoxStyle, palette)}
-              onChange={(next) => onFrameMaterialChange({ boxColor: next })}
-            />
+      {showBackgroundAnimationControl ? (
+        <Section icon="repeat" title="Animation" defaultOpen>
+          <div
+            className={styles.backgroundAnimationControls}
+            role="group"
+            aria-label="Background animation settings"
+          >
+            <label className={styles.backgroundAnimationToggle}>
+              <span>
+                <strong>Backdrop motion</strong>
+                <span>
+                  {backgroundAnimationAvailable
+                    ? 'Preview and export generated backdrop motion'
+                    : 'Static backdrop'}
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={backgroundAnimationAvailable && backgroundAnimationEnabled}
+                disabled={!backgroundAnimationAvailable}
+                onChange={(event) =>
+                  onBackgroundAnimationChange(event.currentTarget.checked)
+                }
+              />
+            </label>
+            {backgroundAnimationAvailable && backgroundAnimationEnabled ? (
+              <Slider
+                label="Motion speed"
+                min={MANTLE_BACKGROUND_ANIMATION_SPEED_MIN}
+                max={MANTLE_BACKGROUND_ANIMATION_SPEED_MAX}
+                step={0.05}
+                value={backgroundAnimationSpeed}
+                format={formatPreciseMultiplier}
+                onChange={onBackgroundAnimationSpeedChange}
+              />
+            ) : null}
           </div>
-        ) : null}
-        {isGlassMaterial ? (
-          <Slider
-            label="Edge highlight"
-            min={0}
-            max={1}
-            step={0.01}
-            value={
-              card.frame.glassOutlineOpacity ??
-              CSS_GLASS_FRAME_DEFAULTS.glassOutlineOpacity
-            }
-            format={formatPercent}
-            editScale={100}
-            onChange={(glassOutlineOpacity) =>
-              onFrameMaterialChange({ glassOutlineOpacity })
-            }
+        </Section>
+      ) : null}
+
+      <Section icon="frame" title="Frame" defaultOpen>
+        <ControlGroup title="Material">
+          <IconChoiceGrid
+            activeValue={activeFrameBoxStyle}
+            values={FRAME_BOX_STYLE_IDS}
+            labels={BOX_STYLE_LABELS}
+            onChange={onFrameBoxStyleChange}
           />
-        ) : null}
-        <div className={styles.frameGroupLabel}>Window chrome</div>
-        <FrameShellGrid
-          activeValue={activeFrameShellPreset}
-          onChange={onFramePresetChange}
-        />
-        {activeFrameShellPreset !== 'none' ? (
-          <label className={styles.textField}>
-            <span>Window title</span>
-            <input
-              value={card.frame.chromeText ?? ''}
-              placeholder="Auto from card name"
-              onChange={(event) =>
-                onFrameShellTextChange(event.currentTarget.value || undefined)
+          {isGlassMaterial ? (
+            <Slider
+              label="Opacity"
+              min={0}
+              max={1}
+              step={0.01}
+              value={card.frame.boxOpacity ?? CSS_GLASS_FRAME_DEFAULTS.boxOpacity}
+              format={formatPercent}
+              editScale={100}
+              onChange={(boxOpacity) => onFrameMaterialChange({ boxOpacity })}
+            />
+          ) : null}
+          {isGlassMaterial ? (
+            <Slider
+              label="Blur"
+              min={0}
+              max={5}
+              step={0.1}
+              value={card.frame.glassBlur ?? CSS_GLASS_FRAME_DEFAULTS.glassBlur}
+              format={formatFractionalPx}
+              onChange={(glassBlur) => onFrameMaterialChange({ glassBlur })}
+            />
+          ) : null}
+          {activeFrameBoxStyle === 'solid' || isGlassMaterial ? (
+            <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
+              <ColorSwatch
+                label={frameColorLabel}
+                value={card.frame.boxColor ?? defaultBoxColor(activeFrameBoxStyle, palette)}
+                onChange={(next) => onFrameMaterialChange({ boxColor: next })}
+              />
+            </div>
+          ) : null}
+          {isGlassMaterial ? (
+            <Slider
+              label="Edge highlight"
+              min={0}
+              max={1}
+              step={0.01}
+              value={
+                card.frame.glassOutlineOpacity ??
+                CSS_GLASS_FRAME_DEFAULTS.glassOutlineOpacity
+              }
+              format={formatPercent}
+              editScale={100}
+              onChange={(glassOutlineOpacity) =>
+                onFrameMaterialChange({ glassOutlineOpacity })
               }
             />
-          </label>
-        ) : null}
-        <div className={styles.frameGroupLabel}>Layout</div>
-        <Slider
-          label="Outer padding"
-          min={0}
-          max={240}
-          step={4}
-          value={card.frame.padding}
-          format={formatPx}
-          onChange={onPaddingChange}
-        />
-        {activeFrameBoxStyle !== 'none' ? (
+          ) : null}
+        </ControlGroup>
+        <ControlGroup title="Window chrome">
+          <FrameShellGrid
+            activeValue={activeFrameShellPreset}
+            onChange={onFramePresetChange}
+          />
+          {activeFrameShellPreset !== 'none' ? (
+            <label className={styles.textField}>
+              <span>Window title</span>
+              <input
+                value={card.frame.chromeText ?? ''}
+                placeholder="Auto from card name"
+                onChange={(event) =>
+                  onFrameShellTextChange(event.currentTarget.value || undefined)
+                }
+              />
+            </label>
+          ) : null}
+        </ControlGroup>
+        <ControlGroup title="Layout">
           <Slider
-            label={frameInsetLabel}
+            label="Outer padding"
             min={0}
-            max={120}
-            step={2}
-            value={card.frame.contentPadding ?? 0}
+            max={240}
+            step={4}
+            value={card.frame.padding}
             format={formatPx}
-            onChange={onFrameContentPaddingChange}
+            onChange={onPaddingChange}
           />
-        ) : null}
-        <Slider
-          label="Corner radius"
-          min={0}
-          max={52}
-          step={2}
-          value={card.frame.cornerRadius}
-          format={formatPx}
-          onChange={onRadiusChange}
-        />
-        <div className={styles.frameGroupLabel}>Shadow</div>
-        <Slider
-          label="Strength"
-          min={0}
-          max={4}
-          step={0.02}
-          value={shadowSettings.strength}
-          format={formatPreciseMultiplier}
-          onChange={(shadowStrength) => updateShadowSettings({ shadowStrength })}
-        />
-        <Slider
-          label="Softness"
-          min={0}
-          max={4}
-          step={0.02}
-          value={shadowSettings.softness}
-          format={formatPreciseMultiplier}
-          onChange={(shadowSoftness) => updateShadowSettings({ shadowSoftness })}
-        />
-        <Slider
-          label="Offset"
-          min={0}
-          max={4}
-          step={0.02}
-          value={shadowSettings.distance}
-          format={formatPreciseMultiplier}
-          onChange={(shadowDistance) => updateShadowSettings({ shadowDistance })}
-        />
-        <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
-          <ColorSwatch
-            label="Color"
-            value={shadowSettings.color}
-            onChange={(shadowColor) => updateShadowSettings({ shadowColor })}
+          {activeFrameBoxStyle !== 'none' ? (
+            <Slider
+              label={frameInsetLabel}
+              min={0}
+              max={120}
+              step={2}
+              value={card.frame.contentPadding ?? 0}
+              format={formatPx}
+              onChange={onFrameContentPaddingChange}
+            />
+          ) : null}
+          <Slider
+            label="Corner radius"
+            min={0}
+            max={52}
+            step={2}
+            value={card.frame.cornerRadius}
+            format={formatPx}
+            onChange={onRadiusChange}
           />
-        </div>
+        </ControlGroup>
+        <ControlGroup title="Shadow">
+          <Slider
+            label="Strength"
+            min={0}
+            max={4}
+            step={0.02}
+            value={shadowSettings.strength}
+            format={formatPreciseMultiplier}
+            onChange={(shadowStrength) => updateShadowSettings({ shadowStrength })}
+          />
+          <Slider
+            label="Softness"
+            min={0}
+            max={4}
+            step={0.02}
+            value={shadowSettings.softness}
+            format={formatPreciseMultiplier}
+            onChange={(shadowSoftness) => updateShadowSettings({ shadowSoftness })}
+          />
+          <Slider
+            label="Offset"
+            min={0}
+            max={4}
+            step={0.02}
+            value={shadowSettings.distance}
+            format={formatPreciseMultiplier}
+            onChange={(shadowDistance) => updateShadowSettings({ shadowDistance })}
+          />
+          <div className={`${styles.paletteRow} ${styles.paletteRowSingle}`}>
+            <ColorSwatch
+              label="Color"
+              value={shadowSettings.color}
+              onChange={(shadowColor) => updateShadowSettings({ shadowColor })}
+            />
+          </div>
+        </ControlGroup>
       </Section>
 
       <Section icon="aspect-ratio" title="Canvas size">
         {activeTarget ? (
           <>
-            <div className={styles.ratioModeGrid}>
-              {ASPECT_MODE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={
-                    option.value === activeAspectRatio
-                      ? `${styles.ratioButton} ${styles.ratioButtonActive}`
-                      : styles.ratioButton
-                  }
-                  onClick={() => onSurfaceAspectRatioChange(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <div className={styles.ratioGrid}>
-              {ASPECT_RATIO_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={
-                    option.value === activeAspectRatio
-                      ? `${styles.ratioButton} ${styles.ratioButtonActive}`
-                      : styles.ratioButton
-                  }
-                  onClick={() => onSurfaceAspectRatioChange(option.value, option.ratio)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            {activeAspectRatio === 'custom-ratio' ? (
+            <ControlGroup title="Ratio">
+              <div className={styles.ratioModeGrid}>
+                {ASPECT_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={
+                      option.value === activeAspectRatio
+                        ? `${styles.ratioButton} ${styles.ratioButtonActive}`
+                        : styles.ratioButton
+                    }
+                    onClick={() => onSurfaceAspectRatioChange(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.ratioGrid}>
+                {ASPECT_RATIO_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={
+                      option.value === activeAspectRatio
+                        ? `${styles.ratioButton} ${styles.ratioButtonActive}`
+                        : styles.ratioButton
+                    }
+                    onClick={() => onSurfaceAspectRatioChange(option.value, option.ratio)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {activeAspectRatio === 'custom-ratio' ? (
+                <div className={styles.dimensionGrid}>
+                  <DimensionField
+                    label="Ratio W"
+                    min={1}
+                    max={99}
+                    value={customRatioParts.width}
+                    onCommit={(ratioWidth) =>
+                      onSurfaceAspectRatioChange(
+                        'custom-ratio',
+                        ratioWidth / customRatioParts.height
+                      )
+                    }
+                  />
+                  <DimensionField
+                    label="Ratio H"
+                    min={1}
+                    max={99}
+                    value={customRatioParts.height}
+                    onCommit={(ratioHeight) =>
+                      onSurfaceAspectRatioChange(
+                        'custom-ratio',
+                        customRatioParts.width / ratioHeight
+                      )
+                    }
+                  />
+                </div>
+              ) : null}
+            </ControlGroup>
+            <ControlGroup title="Size">
               <div className={styles.dimensionGrid}>
                 <DimensionField
-                  label="Ratio W"
-                  min={1}
-                  max={99}
-                  value={customRatioParts.width}
-                  onCommit={(ratioWidth) =>
-                    onSurfaceAspectRatioChange(
-                      'custom-ratio',
-                      ratioWidth / customRatioParts.height
+                  label="Width"
+                  value={activeTarget.width}
+                  onCommit={(width) =>
+                    onSurfaceSizeChange(
+                      { width },
+                      activeRatio
+                        ? {
+                            ratio: activeRatio,
+                            anchor: 'width',
+                            aspectRatioPresetId: activeAspectRatio
+                          }
+                        : { aspectRatioPresetId: activeAspectRatio }
                     )
                   }
                 />
                 <DimensionField
-                  label="Ratio H"
-                  min={1}
-                  max={99}
-                  value={customRatioParts.height}
-                  onCommit={(ratioHeight) =>
-                    onSurfaceAspectRatioChange(
-                      'custom-ratio',
-                      customRatioParts.width / ratioHeight
+                  label="Height"
+                  value={activeTarget.height}
+                  onCommit={(height) =>
+                    onSurfaceSizeChange(
+                      { height },
+                      activeRatio
+                        ? {
+                            ratio: activeRatio,
+                            anchor: 'height',
+                            aspectRatioPresetId: activeAspectRatio
+                          }
+                        : { aspectRatioPresetId: activeAspectRatio }
                     )
                   }
                 />
               </div>
-            ) : null}
-            <div className={styles.dimensionGrid}>
-              <DimensionField
-                label="Width"
-                value={activeTarget.width}
-                onCommit={(width) =>
-                  onSurfaceSizeChange(
-                    { width },
-                    activeRatio
-                      ? {
-                          ratio: activeRatio,
-                          anchor: 'width',
-                          aspectRatioPresetId: activeAspectRatio
-                        }
-                      : { aspectRatioPresetId: activeAspectRatio }
-                  )
-                }
-              />
-              <DimensionField
-                label="Height"
-                value={activeTarget.height}
-                onCommit={(height) =>
-                  onSurfaceSizeChange(
-                    { height },
-                    activeRatio
-                      ? {
-                          ratio: activeRatio,
-                          anchor: 'height',
-                          aspectRatioPresetId: activeAspectRatio
-                        }
-                      : { aspectRatioPresetId: activeAspectRatio }
-                  )
-                }
-              />
-            </div>
+            </ControlGroup>
           </>
         ) : null}
       </Section>
@@ -1455,8 +1512,7 @@ export function InspectorPanel({
         </div>
         {activeTextLayer ? (
           <div className={styles.textLayerControls}>
-            <div className={styles.textControlGroup}>
-              <div className={styles.textControlGroupTitle}>Style</div>
+            <ControlGroup title="Style">
               <div className={styles.textStylePanel}>
                 <FontSelect
                   label="Font"
@@ -1471,15 +1527,14 @@ export function InspectorPanel({
                   resetDisabled={!activeTextLayer.color}
                 />
               </div>
-            </div>
-            <div className={styles.textControlGroup}>
-              <div className={styles.textControlGroupTitle}>Shadow</div>
+            </ControlGroup>
+            <ControlGroup title="Shadow">
               <Segmented
                 value={activeTextLayer.shadow}
                 options={TEXT_SHADOW_OPTIONS}
                 onChange={(shadow) => onTextLayerChange(activeTextLayer.id, { shadow })}
               />
-            </div>
+            </ControlGroup>
           </div>
         ) : null}
       </Section>

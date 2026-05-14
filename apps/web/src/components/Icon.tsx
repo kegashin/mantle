@@ -43,8 +43,7 @@ export type IconName =
   | 'panel'
   | 'glass'
   | 'shuffle'
-  | 'repeat'
-  | 'density';
+  | 'repeat';
 
 type IconProps = SVGProps<SVGSVGElement> & {
   name: IconName;
@@ -348,14 +347,6 @@ const paths: Record<IconName, ReactElement> = {
       <path d="M3 11V9a3 3 0 0 1 3-3h15" />
       <path d="m7 22-4-4 4-4" />
       <path d="M21 13v2a3 3 0 0 1-3 3H3" />
-    </>
-  ),
-  density: (
-    <>
-      <path d="m3 17 3.5-9 3.5 9" />
-      <path d="M4.4 14h4.2" />
-      <path d="m13.5 17 3-7 3 7" />
-      <path d="M14.6 14.6h3.8" />
     </>
   )
 };

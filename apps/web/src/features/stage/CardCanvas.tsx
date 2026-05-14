@@ -1,4 +1,7 @@
 import {
+  isAnimatedBackgroundPresetId
+} from '@mantle/engine/catalog';
+import {
   createMantlePreviewRenderer,
   SOURCE_PLACEMENT_ZOOM_MAX,
   SOURCE_PLACEMENT_ZOOM_MIN,
@@ -82,11 +85,6 @@ const HEAVY_PREVIEW_BACKGROUND_IDS = new Set([
   'falling-pattern',
   'marbling',
   'signal-field',
-  'smoke-veil'
-]);
-const ANIMATED_PREVIEW_BACKGROUND_IDS = new Set([
-  'aurora-gradient',
-  'marbling',
   'smoke-veil'
 ]);
 
@@ -277,6 +275,17 @@ function canUsePreviewWorker(): boolean {
     typeof Worker !== 'undefined' &&
     typeof OffscreenCanvas !== 'undefined' &&
     typeof createImageBitmap !== 'undefined'
+  );
+}
+
+function isPreviewPageVisible(): boolean {
+  return typeof document === 'undefined' || document.visibilityState !== 'hidden';
+}
+
+function isReducedMotionPreferred(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
 }
 
@@ -1343,9 +1352,12 @@ export function CardCanvas({
   const motionFrameTimeRef = useRef(0);
   const motionPreviewActiveRef = useRef(motionPreviewActive);
   const backgroundAnimationEnabledRef = useRef(backgroundAnimationEnabled);
+  const previewPageVisibleRef = useRef(isPreviewPageVisible());
   const [renderError, setRenderError] = useState<string | null>(null);
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface | null>(null);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const [sourcePreviewVideoElement, setSourcePreviewVideoElement] =
+    useState<HTMLVideoElement | null>(null);
   const [sourceEditorOpen, setSourceEditorOpen] = useState(false);
   const [frameEditorOpen, setFrameEditorOpen] = useState(false);
   const [textEditorOpen, setTextEditorOpen] = useState(false);
@@ -1363,13 +1375,10 @@ export function CardCanvas({
     useState<number | null>(null);
   const [textRotationSnapAngle, setTextRotationSnapAngle] =
     useState<number | null>(null);
-  const [previewAnimationAllowed, setPreviewAnimationAllowed] = useState(() => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return true;
-    return (
-      document.visibilityState !== 'hidden' &&
-      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    );
-  });
+  const [previewPageVisible, setPreviewPageVisible] = useState(isPreviewPageVisible);
+  const [previewAnimationAllowed, setPreviewAnimationAllowed] = useState(
+    () => isPreviewPageVisible() && !isReducedMotionPreferred()
+  );
   const textLayers = card.textLayers ?? [];
   const activeTextLayer =
     textLayers.find((layer) => layer.id === card.activeTextLayerId) ??
@@ -1382,8 +1391,7 @@ export function CardCanvas({
     previewAnimationAllowed &&
     motionPreviewActive &&
     backgroundAnimationEnabled &&
-    ANIMATED_PREVIEW_BACKGROUND_IDS.has(card.background.presetId);
-  const hasStillAssetSource = hasAssetSource && !isVideoSource;
+    isAnimatedBackgroundPresetId(card.background.presetId);
   const isMissingSource = Boolean(card.sourceAssetId && !hasAssetSource);
   const videoClipStartMs = videoClip?.startMs ?? 0;
   const videoClipEndMs = Math.max(
@@ -1414,6 +1422,7 @@ export function CardCanvas({
   };
   backgroundAnimationEnabledRef.current = backgroundAnimationEnabled;
   motionPreviewActiveRef.current = motionPreviewActive;
+  previewPageVisibleRef.current = previewPageVisible;
 
   const setVideoDecoderRef = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node;
@@ -1440,9 +1449,9 @@ export function CardCanvas({
   useEffect(() => {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const updateAnimationAllowed = () => {
-      setPreviewAnimationAllowed(
-        document.visibilityState !== 'hidden' && !reducedMotionQuery.matches
-      );
+      const visible = isPreviewPageVisible();
+      setPreviewPageVisible(visible);
+      setPreviewAnimationAllowed(visible && !reducedMotionQuery.matches);
     };
 
     updateAnimationAllowed();
@@ -1456,6 +1465,23 @@ export function CardCanvas({
   }, []);
 
   useEffect(() => {
+    if (previewPageVisible) return;
+    const video = videoElement ?? videoRef.current;
+    if (video && !video.paused) {
+      video.pause();
+      reportVideoPlaybackState(video);
+    }
+    if (sourcePreviewVideoElement && !sourcePreviewVideoElement.paused) {
+      sourcePreviewVideoElement.pause();
+    }
+  }, [
+    previewPageVisible,
+    reportVideoPlaybackState,
+    sourcePreviewVideoElement,
+    videoElement
+  ]);
+
+  useEffect(() => {
     if (hasAssetSource) return;
     setSourceEditorOpen(false);
     setSourceDragging(false);
@@ -1465,6 +1491,77 @@ export function CardCanvas({
     latestSourceDraftRef.current = null;
     pendingSourceDraftRef.current = null;
   }, [hasAssetSource]);
+
+  useEffect(() => {
+    if (
+      !isVideoSource ||
+      !previewPageVisible ||
+      !sourceEditorOpen ||
+      !videoElement ||
+      !sourcePreviewVideoElement
+    ) {
+      return undefined;
+    }
+
+    let rafId = 0;
+    const source = videoElement;
+    const preview = sourcePreviewVideoElement;
+
+    const syncPreviewFrame = () => {
+      const sourceTime = Number.isFinite(source.currentTime) ? source.currentTime : 0;
+      if (
+        preview.readyState >= HTMLMediaElement.HAVE_METADATA &&
+        Number.isFinite(preview.duration)
+      ) {
+        const nextTime = clamp(sourceTime, 0, Math.max(0, preview.duration));
+        if (Math.abs(preview.currentTime - nextTime) > 0.08) {
+          preview.currentTime = nextTime;
+        }
+      }
+
+      preview.playbackRate = source.playbackRate;
+      preview.muted = true;
+      if (source.paused || source.ended) {
+        preview.pause();
+        return;
+      }
+
+      void preview.play().catch(() => undefined);
+      rafId = requestAnimationFrame(syncPreviewFrame);
+    };
+
+    const syncAndQueue = () => {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+      syncPreviewFrame();
+    };
+
+    source.addEventListener('loadeddata', syncAndQueue);
+    source.addEventListener('loadedmetadata', syncAndQueue);
+    source.addEventListener('play', syncAndQueue);
+    source.addEventListener('pause', syncAndQueue);
+    source.addEventListener('seeked', syncAndQueue);
+    source.addEventListener('timeupdate', syncAndQueue);
+    preview.addEventListener('loadedmetadata', syncAndQueue);
+    syncAndQueue();
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      source.removeEventListener('loadeddata', syncAndQueue);
+      source.removeEventListener('loadedmetadata', syncAndQueue);
+      source.removeEventListener('play', syncAndQueue);
+      source.removeEventListener('pause', syncAndQueue);
+      source.removeEventListener('seeked', syncAndQueue);
+      source.removeEventListener('timeupdate', syncAndQueue);
+      preview.removeEventListener('loadedmetadata', syncAndQueue);
+    };
+  }, [
+    isVideoSource,
+    previewPageVisible,
+    sourceEditorOpen,
+    sourcePreviewVideoElement,
+    videoElement
+  ]);
 
   useEffect(() => {
     if (!isVideoSource && (!motionPreviewActive || !backgroundAnimationEnabled)) {
@@ -1565,7 +1662,7 @@ export function CardCanvas({
 
   useEffect(() => {
     const video = videoElement;
-    if (!isVideoSource || !video) return undefined;
+    if (!isVideoSource || !video || !previewPageVisible) return undefined;
 
     let disposed = false;
     let rafId = 0;
@@ -1666,7 +1763,8 @@ export function CardCanvas({
     videoClipEndMs,
     videoClipLoop,
     videoClipStartMs,
-    videoElement
+    videoElement,
+    previewPageVisible
   ]);
 
   useEffect(() => {
@@ -1846,6 +1944,11 @@ export function CardCanvas({
       renderInFlight = true;
       renderQueued = false;
       lastPreviewRenderStartRef.current = performance.now();
+      if (!previewPageVisibleRef.current) {
+        renderInFlight = false;
+        renderQueued = true;
+        return;
+      }
 
       const state = latestRenderStateRef.current;
       if (!state) {
@@ -1886,7 +1989,7 @@ export function CardCanvas({
       const backgroundTimeMs = backgroundAnimationEnabledRef.current
         ? sourceFrame?.timeMs ?? motionFrameTimeRef.current
         : 0;
-      const renderMode = motionPreviewActiveRef.current ? 'export' : 'preview';
+      const renderMode = 'preview';
       const renderPayload: PreviewWorkerRequest = {
         card: state.card,
         target: state.target,
@@ -2013,6 +2116,7 @@ export function CardCanvas({
     const schedule = () => {
       if (disposed) return;
       renderQueued = true;
+      if (!previewPageVisibleRef.current) return;
       if (renderInFlight || rafId || throttleId) return;
 
       const run = () => {
@@ -2058,6 +2162,8 @@ export function CardCanvas({
     backgroundAnimationEnabled,
     hasAssetSource,
     motionPreviewActive,
+    previewAnimationAllowed,
+    previewPageVisible,
     videoElement,
     textEditorOpen,
     activeTextLayerId
@@ -2096,13 +2202,16 @@ export function CardCanvas({
   );
   const visibleCrop = sourceDraftCrop ?? activeCrop;
   const activeZoom = resolveSourceCropZoom(visibleCrop, coverCrop);
+  const sourcePlacementMode = sourceDraftCrop
+    ? 'crop'
+    : card.sourcePlacement?.mode ?? 'fit';
   const showSourcePreview =
-    hasStillAssetSource &&
+    hasAssetSource &&
     Boolean(asset?.objectUrl) &&
     Boolean(previewSurface) &&
-    (Boolean(sourceDraftCrop) || (card.sourcePlacement?.mode ?? 'fit') !== 'fit');
+    (Boolean(sourceDraftCrop) || sourcePlacementMode === 'crop');
   const sourcePreviewStyle =
-    previewSurface && (showSourcePreview || (isVideoSource && sourceEditorOpen))
+    previewSurface && showSourcePreview
       ? sourcePreviewImageStyle(visibleCrop, previewSurface.contentCssRect)
       : undefined;
   const activeFrameTransform = normalizeFrameTransform(card.frameTransform);
@@ -3117,6 +3226,7 @@ export function CardCanvas({
               : styles.sourceEditor
           }
           style={sourceEditorStyle}
+          title="Drag media to position. Scroll to scale."
           onPointerDown={(event) => {
             if (!previewSurface) return;
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -3185,10 +3295,11 @@ export function CardCanvas({
             <div className={styles.sourcePreviewClip} aria-hidden="true">
               {isVideoSource ? (
                 <video
+                  ref={setSourcePreviewVideoElement}
                   className={styles.sourcePreviewImage}
                   muted
                   playsInline
-                  preload="metadata"
+                  preload="auto"
                   src={asset.objectUrl}
                   style={sourcePreviewStyle}
                 />
@@ -3226,7 +3337,7 @@ export function CardCanvas({
             <button
               type="button"
               className={
-                (card.sourcePlacement?.mode ?? 'fit') === 'fit'
+                sourcePlacementMode === 'fit'
                   ? `${styles.sourceToolButton} ${styles.sourceToolButtonActive}`
                   : styles.sourceToolButton
               }
@@ -3244,7 +3355,7 @@ export function CardCanvas({
             <button
               type="button"
               className={
-                card.sourcePlacement?.mode === 'fill'
+                sourcePlacementMode === 'fill'
                   ? `${styles.sourceToolButton} ${styles.sourceToolButtonActive}`
                   : styles.sourceToolButton
               }
@@ -3261,13 +3372,24 @@ export function CardCanvas({
             </button>
             <button
               type="button"
+              className={
+                sourcePlacementMode === 'crop'
+                  ? `${styles.sourceToolButton} ${styles.sourceToolButtonActive}`
+                  : styles.sourceToolButton
+              }
+              onClick={() => flushSourceDraft(visibleCrop)}
+            >
+              Crop
+            </button>
+            <button
+              type="button"
               className={styles.sourceToolButton}
               onClick={() => flushSourceDraft(centerCrop(visibleCrop))}
             >
               Center
             </button>
             <label className={styles.sourceZoomControl}>
-              <span>Zoom</span>
+              <span>Scale</span>
               <input
                 type="range"
                 min={SOURCE_PLACEMENT_ZOOM_MIN}
