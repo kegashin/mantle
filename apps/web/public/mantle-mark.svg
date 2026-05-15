@@ -1,0 +1,18 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="mantle-bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(28 20) rotate(48) scale(84)">
+      <stop stop-color="#1C1C21"/>
+      <stop offset="0.55" stop-color="#09090B"/>
+      <stop offset="1" stop-color="#050506"/>
+    </radialGradient>
+    <filter id="mantle-soft" x="6" y="12" width="84" height="76" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#000000" flood-opacity="0.38"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#D8B46A" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="92" height="92" rx="22" fill="url(#mantle-bg)" stroke="#28262B" stroke-width="1.2"/>
+  <g filter="url(#mantle-soft)">
+    <path d="M23.4 21.5C18.8 21.5 15.8 25.1 15.8 29.4V66.6C15.8 70.9 18.8 74.5 23.4 74.5C25.2 74.5 27.1 73.8 28.6 72.5L50.2 53.2C53.5 50.3 53.5 45.7 50.2 42.8L28.6 23.5C27.1 22.2 25.2 21.5 23.4 21.5ZM29.4 35.3C29.4 33.9 31 33.2 32.1 34.1L43.9 44.5C46 46.3 46 49.7 43.9 51.5L32.1 61.9C31 62.8 29.4 62.1 29.4 60.7V35.3Z" fill="#F7F0E4" fill-rule="evenodd" clip-rule="evenodd"/>
+    <path d="M72.6 21.5C77.2 21.5 80.2 25.1 80.2 29.4V66.6C80.2 70.9 77.2 74.5 72.6 74.5C70.8 74.5 68.9 73.8 67.4 72.5L45.8 53.2C42.5 50.3 42.5 45.7 45.8 42.8L67.4 23.5C68.9 22.2 70.8 21.5 72.6 21.5ZM66.6 35.3C66.6 33.9 65 33.2 63.9 34.1L52.1 44.5C50 46.3 50 49.7 52.1 51.5L63.9 61.9C65 62.8 66.6 62.1 66.6 60.7V35.3Z" fill="#F7F0E4" fill-rule="evenodd" clip-rule="evenodd"/>
+  </g>
+</svg>

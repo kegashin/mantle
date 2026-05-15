@@ -5,7 +5,6 @@ export type IconName =
   | 'image'
   | 'sparkle'
   | 'sliders'
-  | 'wand'
   | 'film'
   | 'download'
   | 'copy'
@@ -88,16 +87,6 @@ const paths: Record<IconName, ReactElement> = {
       <path d="M4 18h12" />
       <path d="M20 18h0" />
       <circle cx="18" cy="18" r="2" />
-    </>
-  ),
-  wand: (
-    <>
-      <path d="m4 20 12-12" />
-      <path d="M14 6h4v4" />
-      <path d="M9 4v2" />
-      <path d="M5 8h2" />
-      <path d="M19 13v2" />
-      <path d="M20 19h-2" />
     </>
   ),
   film: (

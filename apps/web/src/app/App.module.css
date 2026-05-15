@@ -51,16 +51,19 @@
   background:
     radial-gradient(circle at 30% 24%, rgba(230, 181, 114, 0.22), transparent 58%),
     linear-gradient(140deg, #1c1c22 0%, #08080b 100%);
-  color: var(--color-brand);
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  color: #f6efe2;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     inset 0 0 0 1px rgba(230, 181, 114, 0.22),
     inset 0 -1px 0 rgba(0, 0, 0, 0.5),
     0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.brandMarkGlyph {
+  width: 24px;
+  height: 24px;
+  display: block;
+  filter: drop-shadow(0 0 4px rgba(235, 204, 154, 0.2));
 }
 
 .brandWord {

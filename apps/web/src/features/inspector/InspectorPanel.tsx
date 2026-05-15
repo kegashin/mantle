@@ -97,7 +97,6 @@ type InspectorPanelProps = {
       >
     >
   ) => void;
-  onTextChange: (patch: Partial<MantleCard['text']>) => void;
   onTextLayerAdd: () => void;
   onTextLayerChange: (layerId: string, patch: Partial<MantleTextLayer>) => void;
   onTextLayerDuplicate: (layerId: string) => void;
@@ -167,58 +166,7 @@ const TEXT_FONT_OPTIONS: Array<{ value: MantleTextFont; label: string }> = [
   { value: 'condensed', label: 'Condensed' }
 ];
 
-const SHOW_MAGIC_TEXT_LAYOUT = false;
 const MAX_TEXT_LAYERS = 24;
-
-function resolveMagicTextLayout(
-  card: MantleCard,
-  target: MantleSurfaceTarget | undefined
-): Partial<MantleCard['text']> {
-  const ratio = target ? target.width / target.height : 16 / 9;
-  const wide = ratio >= 1.42;
-  const portrait = ratio <= 0.82;
-  const squareish = ratio > 0.82 && ratio < 1.22;
-
-  if (wide) {
-    return {
-      placement: 'left',
-      align: 'left',
-      titleFont: card.text.titleFont === 'sans' ? 'display' : card.text.titleFont,
-      subtitle: undefined,
-      width: 0.3,
-      gap: 72,
-      scale: 1.04,
-      shadow: 'auto',
-      transform: undefined
-    };
-  }
-
-  if (portrait) {
-    return {
-      placement: 'top',
-      align: 'center',
-      titleFont: card.text.titleFont === 'sans' ? 'display' : card.text.titleFont,
-      subtitle: undefined,
-      width: 0.82,
-      gap: 56,
-      scale: 0.92,
-      shadow: 'auto',
-      transform: undefined
-    };
-  }
-
-  return {
-    placement: squareish ? 'bottom' : 'top',
-    align: 'center',
-    titleFont: card.text.titleFont === 'sans' ? 'display' : card.text.titleFont,
-    subtitle: undefined,
-    width: squareish ? 0.76 : 0.72,
-    gap: squareish ? 52 : 60,
-    scale: squareish ? 0.9 : 0.96,
-    shadow: 'auto',
-    transform: undefined
-  };
-}
 
 const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
 const formatTurnsAsDegrees = (value: number) => `${Math.round(value * 360)}°`;
@@ -684,7 +632,6 @@ export function InspectorPanel({
   onFrameContentPaddingChange,
   onRadiusChange,
   onFrameShadowChange,
-  onTextChange,
   onTextLayerAdd,
   onTextLayerChange,
   onTextLayerDuplicate,
@@ -862,8 +809,6 @@ export function InspectorPanel({
     .reverse();
   const canAddTextLayer = textLayers.length < MAX_TEXT_LAYERS;
   const activateTextLayer = () => onTextLayerAdd();
-  const applyMagicTextLayout = () =>
-    onTextChange(resolveMagicTextLayout(card, activeTarget));
 
   return (
     <aside className={styles.inspector}>
@@ -1366,17 +1311,6 @@ export function InspectorPanel({
               <strong>{textLayers.length}</strong>
             </div>
             <div className={styles.textLayerActions}>
-              {SHOW_MAGIC_TEXT_LAYOUT ? (
-                <button
-                  type="button"
-                  className={styles.actionButton}
-                  onClick={applyMagicTextLayout}
-                  title="Place text automatically"
-                >
-                  <Icon name="wand" size={13} aria-hidden="true" />
-                  <span>Magic</span>
-                </button>
-              ) : null}
               <button
                 type="button"
                 className={`${styles.actionButton} ${styles.textAddButton}`}

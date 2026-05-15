@@ -5,7 +5,6 @@ import {
   createMantlePreviewRenderer,
   SOURCE_PLACEMENT_ZOOM_MAX,
   SOURCE_PLACEMENT_ZOOM_MIN,
-  resolveCoverSourceCrop,
   resolveSourceCropFocus,
   resolveSourceCropForContent,
   resolveSourceCropZoom

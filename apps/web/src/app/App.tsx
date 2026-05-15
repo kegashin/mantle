@@ -32,6 +32,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
+import { BrandMark } from '../components/BrandMark';
 import { Icon } from '../components/Icon';
 import { InspectorPanel } from '../features/inspector/InspectorPanel';
 import {
@@ -956,17 +957,6 @@ function importFailureNotice(
   };
 }
 
-function relinkMissingAssetNotice(kind: 'source' | 'background'): Omit<AppNotice, 'id'> {
-  return {
-    tone: 'warning',
-    title: kind === 'background' ? 'Reimport backdrop image' : 'Reimport source media',
-    detail:
-      kind === 'background'
-        ? 'Saved projects keep image metadata only. Relink the local backdrop image before exporting.'
-        : 'Saved projects keep source metadata only. Relink the local file to render or export this card.'
-  };
-}
-
 function exportFailureNotice(
   error: AppFailure,
   format: MantleExportFormat,
@@ -1190,15 +1180,6 @@ export function App() {
     revokeRuntimeObjectUrl(url);
     objectUrlsRef.current.delete(url);
   }, []);
-
-  const revokeProjectObjectUrls = useCallback(
-    (targetProject: RuntimeMantleProject) => {
-      targetProject.assets.forEach((asset) => {
-        if (asset.objectUrl) revokeObjectUrl(asset.objectUrl);
-      });
-    },
-    [revokeObjectUrl]
-  );
 
   useEffect(() => {
     return () => {
@@ -2525,7 +2506,6 @@ export function App() {
   const showExportVideoSettings =
     activeExportFormat === 'mp4' || activeExportFormat === 'webm';
   const showExportMotionSettings = showExportGifSettings || showExportVideoSettings;
-  const showExportMotionSection = showExportMotionSettings;
   const showExportFrameRateSetting =
     effectiveCompositionMode === 'motion' && showExportMotionSettings;
   const showExportQualitySettings = showExportQuality || showExportVideoSettings;
@@ -2995,7 +2975,9 @@ export function App() {
 
       <header className={styles.topBar}>
         <div className={styles.brand}>
-          <span className={styles.brandMark} aria-hidden="true">M</span>
+          <span className={styles.brandMark} aria-hidden="true">
+            <BrandMark className={styles.brandMarkGlyph} />
+          </span>
           <span className={styles.brandWord}>
             <span>MANTLE</span>
           </span>
@@ -3205,7 +3187,7 @@ export function App() {
                   </div>
                 </ExportSection>
 
-                {exportSettingsMode === 'download' && showExportMotionSection ? (
+                {exportSettingsMode === 'download' && showExportMotionSettings ? (
                   <ExportSection
                     title="Motion"
                     meta={showExportVideoSettings ? exportFormatLabel(activeExportFormat) : 'GIF'}
@@ -4181,7 +4163,6 @@ export function App() {
           }
           onRadiusChange={(cornerRadius) => updateActiveFrame({ cornerRadius })}
           onFrameShadowChange={updateActiveFrame}
-          onTextChange={updateActiveText}
           onTextLayerAdd={addActiveTextLayer}
           onTextLayerChange={updateActiveTextLayer}
           onTextLayerDuplicate={duplicateActiveTextLayer}
